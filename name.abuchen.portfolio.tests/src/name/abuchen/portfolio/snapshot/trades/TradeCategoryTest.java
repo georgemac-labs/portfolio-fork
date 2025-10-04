@@ -104,4 +104,46 @@ public class TradeCategoryTest
         // verify weighted aggregations - profit should be 50% of 1000 = 500
         assertThat(category.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(500))));
     }
+
+    @Test
+    public void testAverageReturnForProfitableShortTrade() throws Exception
+    {
+        Client client = new Client();
+
+        Security security = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-02-01", Values.Quote.factorize(90)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2020-01-01", Values.Amount.factorize(20000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .sell(security, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .buy(security, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(9000)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("shorts") //
+                        .addTo(client);
+
+        Classification shorts = taxonomy.getClassificationById("shorts");
+        shorts.addAssignment(new Classification.Assignment(security));
+
+        TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
+        var trades = collector.collect(security);
+
+        assertThat(trades.size(), is(1));
+
+        Trade shortTrade = trades.get(0);
+        assertThat(shortTrade.isLong(), is(false));
+        assertThat(shortTrade.getProfitLoss(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
+
+        TradeCategory category = new TradeCategory(shorts, new TestCurrencyConverter());
+        category.addTrade(shortTrade, 1.0);
+
+        assertThat(category.getAverageReturn(), is(shortTrade.getReturn()));
+    }
 }

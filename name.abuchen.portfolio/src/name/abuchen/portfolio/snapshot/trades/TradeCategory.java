@@ -237,15 +237,10 @@ public class TradeCategory
             Money totalEntryValue = weightedTrades.stream()
                             .map(wt -> wt.trade.getEntryValue().multiplyAndRound(wt.weight))
                             .collect(MoneyCollectors.sum(converter.getTermCurrency()));
-            Money totalExitValue = weightedTrades.stream()
-                            .map(wt -> wt.trade.getExitValue().multiplyAndRound(wt.weight))
-                            .collect(MoneyCollectors.sum(converter.getTermCurrency()));
-            
-            if (totalEntryValue.getAmount() > 0)
+
+            if (totalEntryValue.getAmount() != 0)
             {
-                // For long trades: (exit / entry) - 1
-                // This assumes all trades in category are long (standard case)
-                this.averageReturn = (totalExitValue.getAmount() / (double) totalEntryValue.getAmount()) - 1;
+                this.averageReturn = totalProfitLoss.getAmount() / (double) totalEntryValue.getAmount();
             }
             else
             {
