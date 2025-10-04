@@ -140,4 +140,56 @@ public class TradesGroupedByTaxonomyTest
         // total should still be 1000
         assertThat(grouped.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
     }
+
+    @Test
+    public void testPartialAssignmentBelowHalfKeepsCategoryAndUnassigned() throws Exception
+    {
+        Client client = new Client();
+
+        Security security = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-02-01", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2020-01-01", Values.Amount.factorize(20000)) //
+                        .addTo(client);
+
+        Portfolio portfolio = new PortfolioBuilder(account) //
+                        .buy(security, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(security, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("tech") //
+                        .addTo(client);
+
+        Classification tech = taxonomy.getClassificationById("tech");
+
+        // assign 25% to tech, leaving 75% unassigned
+        tech.addAssignment(new Classification.Assignment(security, Classification.ONE_HUNDRED_PERCENT / 4));
+
+        TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
+        var trades = collector.collect(security);
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, new TestCurrencyConverter());
+
+        assertThat(grouped.asList().size(), is(2));
+
+        TradeCategory techCategory = grouped.byClassification(tech);
+        assertThat(techCategory, notNullValue());
+        assertThat(techCategory.getTotalProfitLoss(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(250))));
+
+        TradeCategory unassignedCategory = grouped.asList().stream() //
+                        .filter(c -> Classification.UNASSIGNED_ID.equals(c.getClassification().getId())) //
+                        .findFirst().orElse(null);
+
+        assertThat(unassignedCategory, notNullValue());
+        assertThat(unassignedCategory.getTotalProfitLoss(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(750))));
+
+        // total should still be 1000
+        assertThat(grouped.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
+    }
 }

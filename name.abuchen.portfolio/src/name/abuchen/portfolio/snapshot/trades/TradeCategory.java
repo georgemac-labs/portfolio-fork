@@ -76,7 +76,12 @@ public class TradeCategory
     public long getTradeCount()
     {
         ensureCalculated();
-        return Math.round(weightedTrades.stream().mapToDouble(wt -> wt.weight).sum());
+        return Math.round(getTotalWeight());
+    }
+
+    /* package */ double getTotalWeight()
+    {
+        return weightedTrades.stream().mapToDouble(wt -> wt.weight).sum();
     }
 
     public Money getTotalProfitLoss()
@@ -204,7 +209,7 @@ public class TradeCategory
         if (calculated)
             return;
 
-        double totalWeight = weightedTrades.stream().mapToDouble(wt -> wt.weight).sum();
+        double totalWeight = getTotalWeight();
 
         if (totalWeight == 0)
         {

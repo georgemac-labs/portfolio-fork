@@ -89,7 +89,7 @@ public class TradesGroupedByTaxonomy
         for (Classification classification : taxonomy.getRoot().getChildren())
         {
             TradeCategory category = classificationToCategory.get(classification);
-            if (category != null && category.getTradeCount() > 0)
+            if (category != null && category.getTotalWeight() > 0)
                 categories.add(category);
         }
 
@@ -120,7 +120,7 @@ public class TradesGroupedByTaxonomy
             }
         }
 
-        if (unassignedCategory.getTradeCount() > 0)
+        if (unassignedCategory.getTotalWeight() > 0)
             categories.add(unassignedCategory);
     }
 
