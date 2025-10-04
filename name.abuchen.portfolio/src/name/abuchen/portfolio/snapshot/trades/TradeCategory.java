@@ -76,7 +76,7 @@ public class TradeCategory
     public long getTradeCount()
     {
         ensureCalculated();
-        return Math.round(getTotalWeight());
+        return weightedTrades.stream().map(wt -> wt.trade).distinct().count();
     }
 
     /* package */ double getTotalWeight()
@@ -122,12 +122,14 @@ public class TradeCategory
 
     public long getWinningTradesCount()
     {
-        return Math.round(weightedTrades.stream().filter(wt -> !wt.trade.isLoss()).mapToDouble(wt -> wt.weight).sum());
+        ensureCalculated();
+        return weightedTrades.stream().filter(wt -> !wt.trade.isLoss()).map(wt -> wt.trade).distinct().count();
     }
 
     public long getLosingTradesCount()
     {
-        return Math.round(weightedTrades.stream().filter(wt -> wt.trade.isLoss()).mapToDouble(wt -> wt.weight).sum());
+        ensureCalculated();
+        return weightedTrades.stream().filter(wt -> wt.trade.isLoss()).map(wt -> wt.trade).distinct().count();
     }
 
     /**

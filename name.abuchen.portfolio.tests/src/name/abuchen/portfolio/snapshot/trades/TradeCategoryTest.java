@@ -106,6 +106,42 @@ public class TradeCategoryTest
     }
 
     @Test
+    public void testPartialWeightedTradeCounts() throws Exception
+    {
+        Client client = new Client();
+
+        Security security = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-02-01", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2020-01-01", Values.Amount.factorize(20000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(security, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(security, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("stocks") //
+                        .addTo(client);
+
+        Classification stocks = taxonomy.getClassificationById("stocks");
+
+        TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
+        var trades = collector.collect(security);
+
+        TradeCategory category = new TradeCategory(stocks, new TestCurrencyConverter());
+        category.addTrade(trades.get(0), 0.4);
+
+        assertThat(category.getTradeCount(), is(1L));
+        assertThat(category.getWinningTradesCount(), is(1L));
+        assertThat(category.getLosingTradesCount(), is(0L));
+    }
+
+    @Test
     public void testAverageReturnForProfitableShortTrade() throws Exception
     {
         Client client = new Client();
