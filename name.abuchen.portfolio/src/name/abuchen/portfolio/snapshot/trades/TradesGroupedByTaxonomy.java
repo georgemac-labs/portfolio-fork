@@ -86,16 +86,16 @@ public class TradesGroupedByTaxonomy
         });
 
         // collect all categories
-        for (Classification classification : taxonomy.getRoot().getChildren())
+        for (TradeCategory category : classificationToCategory.values())
         {
-            TradeCategory category = classificationToCategory.get(classification);
-            if (category != null && category.getTotalWeight() > 0)
+            if (category.getTotalWeight() > 0)
                 categories.add(category);
         }
 
-        // sort by classification rank
-        Collections.sort(categories,
-                        Comparator.comparingInt(c -> c.getClassification().getRank()));
+        // sort by classification rank (and id as tie-breaker for deterministic order)
+        Collections.sort(categories, Comparator
+                        .comparingInt((TradeCategory c) -> c.getClassification().getRank())
+                        .thenComparing(c -> c.getClassification().getId()));
 
         // handle unassigned trades
         createUnassignedCategory(tradeAssignedWeights);

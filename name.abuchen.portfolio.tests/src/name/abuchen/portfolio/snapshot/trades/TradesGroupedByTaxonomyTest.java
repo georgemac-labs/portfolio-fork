@@ -94,6 +94,69 @@ public class TradesGroupedByTaxonomyTest
     }
 
     @Test
+    public void testGroupingIncludesChildClassifications() throws Exception
+    {
+        Client client = new Client();
+
+        Security parentSecurity = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-02-01", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Security childSecurity = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-02-01", Values.Quote.factorize(104)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2020-01-01", Values.Amount.factorize(50000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(parentSecurity, "2020-01-01", Values.Share.factorize(100),
+                                        Values.Amount.factorize(10000)) //
+                        .sell(parentSecurity, "2020-02-01", Values.Share.factorize(100),
+                                        Values.Amount.factorize(11000)) //
+                        .buy(childSecurity, "2020-01-01", Values.Share.factorize(100),
+                                        Values.Amount.factorize(10000)) //
+                        .sell(childSecurity, "2020-02-01", Values.Share.factorize(100),
+                                        Values.Amount.factorize(10400)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("equities") //
+                        .addClassification("equities", "growth") //
+                        .addTo(client);
+
+        Classification equities = taxonomy.getClassificationById("equities");
+        Classification growth = taxonomy.getClassificationById("growth");
+
+        equities.addAssignment(new Classification.Assignment(parentSecurity));
+        growth.addAssignment(new Classification.Assignment(childSecurity));
+
+        List<Trade> trades = new java.util.ArrayList<>();
+        TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
+
+        trades.addAll(collector.collect(parentSecurity));
+        trades.addAll(collector.collect(childSecurity));
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, new TestCurrencyConverter());
+
+        TradeCategory equitiesCategory = grouped.byClassification(equities);
+        assertThat(equitiesCategory, notNullValue());
+        assertThat(equitiesCategory.getTotalProfitLoss(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
+
+        TradeCategory growthCategory = grouped.byClassification(growth);
+        assertThat(growthCategory, notNullValue());
+        assertThat(growthCategory.getTotalProfitLoss(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(400))));
+
+        assertThat(grouped.getTotalProfitLoss(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1400))));
+    }
+
+    @Test
     public void testPartialAssignment() throws Exception
     {
         Client client = new Client();
