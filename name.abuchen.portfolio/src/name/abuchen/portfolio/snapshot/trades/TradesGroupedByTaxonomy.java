@@ -1,11 +1,14 @@
 package name.abuchen.portfolio.snapshot.trades;
 
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import name.abuchen.portfolio.Messages;
 import name.abuchen.portfolio.model.Classification;
@@ -38,74 +41,83 @@ public class TradesGroupedByTaxonomy
         if (taxonomy == null)
             return;
 
+        final boolean multiCurrencyMode = allTrades.stream()
+                        .map(t -> t.getProfitLoss() != null ? t.getProfitLoss().getCurrencyCode() : null)
+                        .filter(Objects::nonNull).distinct().count() > 1;
+
         // track how much weight has been assigned to each trade
         Map<Trade, Integer> tradeAssignedWeights = new HashMap<>();
         for (Trade trade : allTrades)
             tradeAssignedWeights.put(trade, 0);
 
         // create category for each classification and assign trades
-        Map<Classification, TradeCategory> classificationToCategory = new HashMap<>();
+        Map<Object, TradeCategory> keyToCategory = new HashMap<>();
 
         taxonomy.getRoot().accept(new Taxonomy.Visitor()
         {
             @Override
             public void visit(Classification classification)
             {
-                if (classification.getParent() != null) // skip root
-                {
-                    TradeCategory category = new TradeCategory(classification, converter);
-                    classificationToCategory.put(classification, category);
-                }
+                // Categories are created on-the-fly
             }
 
             @Override
             public void visit(Classification classification, Assignment assignment)
             {
+                if (classification.getParent() == null) // skip root
+                    return;
+
                 InvestmentVehicle vehicle = assignment.getInvestmentVehicle();
                 if (!(vehicle instanceof Security))
                     return;
 
                 Security security = (Security) vehicle;
-                TradeCategory category = classificationToCategory.get(classification);
-                if (category == null)
-                    return;
 
                 // find all trades for this security and add them to the category
                 for (Trade trade : allTrades)
                 {
                     if (trade.getSecurity().equals(security))
                     {
+                        if (trade.getProfitLoss() == null || trade.getProfitLoss().getCurrencyCode() == null)
+                            continue;
+
+                        String currencyCode = trade.getProfitLoss().getCurrencyCode();
+
+                        Object key = multiCurrencyMode
+                                        ? new AbstractMap.SimpleImmutableEntry<>(classification, currencyCode)
+                                        : classification;
+
+                        TradeCategory category = keyToCategory.computeIfAbsent(key,
+                                        k -> multiCurrencyMode ? new TradeCategory(classification, converter, currencyCode)
+                                                        : new TradeCategory(classification, converter));
+
                         double weight = assignment.getWeight() / (double) Classification.ONE_HUNDRED_PERCENT;
                         category.addTrade(trade, weight);
 
-                        // track total assigned weight
                         tradeAssignedWeights.merge(trade, assignment.getWeight(), Integer::sum);
                     }
                 }
             }
         });
 
-        // collect all categories
-        for (TradeCategory category : classificationToCategory.values())
-        {
-            if (category.getTotalWeight() > 0)
-                categories.add(category);
-        }
+        categories.addAll(keyToCategory.values().stream().filter(c -> c.getTotalWeight() > 0)
+                        .collect(Collectors.toList()));
 
         // sort by classification rank (and id as tie-breaker for deterministic order)
-        Collections.sort(categories, Comparator
-                        .comparingInt((TradeCategory c) -> c.getClassification().getRank())
-                        .thenComparing(c -> c.getClassification().getId()));
+        Collections.sort(categories,
+                        Comparator.comparingInt((TradeCategory c) -> c.getClassification().getRank())
+                                        .thenComparing(c -> c.getClassification().getId()));
 
         // handle unassigned trades
-        createUnassignedCategory(tradeAssignedWeights);
+        createUnassignedCategory(tradeAssignedWeights, multiCurrencyMode);
     }
 
-    private void createUnassignedCategory(Map<Trade, Integer> tradeAssignedWeights)
+    private void createUnassignedCategory(Map<Trade, Integer> tradeAssignedWeights, boolean multiCurrencyMode)
     {
         Classification unassignedClassification = new Classification(null, Classification.UNASSIGNED_ID,
                         Messages.LabelWithoutClassification);
-        TradeCategory unassignedCategory = new TradeCategory(unassignedClassification, converter);
+
+        Map<String, TradeCategory> unassignedCategories = new HashMap<>();
 
         for (Map.Entry<Trade, Integer> entry : tradeAssignedWeights.entrySet())
         {
@@ -114,14 +126,27 @@ public class TradesGroupedByTaxonomy
 
             if (assignedWeight < Classification.ONE_HUNDRED_PERCENT)
             {
+                if (trade.getProfitLoss() == null || trade.getProfitLoss().getCurrencyCode() == null)
+                    continue;
+
+                String currencyCode = trade.getProfitLoss().getCurrencyCode();
+
+                TradeCategory unassignedCategory = unassignedCategories.computeIfAbsent(currencyCode,
+                                cc -> multiCurrencyMode
+                                                ? new TradeCategory(unassignedClassification, converter, cc)
+                                                : new TradeCategory(unassignedClassification, converter));
+
                 double unassignedWeight = (Classification.ONE_HUNDRED_PERCENT - assignedWeight)
                                 / (double) Classification.ONE_HUNDRED_PERCENT;
                 unassignedCategory.addTrade(trade, unassignedWeight);
             }
         }
 
-        if (unassignedCategory.getTotalWeight() > 0)
-            categories.add(unassignedCategory);
+        for (TradeCategory unassignedCategory : unassignedCategories.values())
+        {
+            if (unassignedCategory.getTotalWeight() > 0)
+                categories.add(unassignedCategory);
+        }
     }
 
     public Taxonomy getTaxonomy()
