@@ -4,6 +4,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.junit.Test;
@@ -21,6 +22,7 @@ import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.model.Taxonomy;
 import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.money.Money;
+import name.abuchen.portfolio.money.MoneyCollectors;
 import name.abuchen.portfolio.money.Values;
 
 @SuppressWarnings("nls")
@@ -254,5 +256,84 @@ public class TradesGroupedByTaxonomyTest
 
         // total should still be 1000
         assertThat(grouped.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
+    }
+
+    @Test
+    public void testGroupingWithSecurityCurrencyConversion() throws Exception
+    {
+        Client client = new Client();
+
+        Security usdSecurity = new SecurityBuilder(CurrencyUnit.USD) //
+                        .addPrice("2015-01-05", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Security chfSecurity = new SecurityBuilder("CHF") //
+                        .addPrice("2015-01-05", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(108)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2015-01-01", Values.Amount.factorize(50000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(usdSecurity, "2015-01-05", Values.Share.factorize(100),
+                                        Values.Amount.factorize(10000)) //
+                        .sell(usdSecurity, "2015-01-09", Values.Share.factorize(100),
+                                        Values.Amount.factorize(11000)) //
+                        .buy(chfSecurity, "2015-01-05", Values.Share.factorize(100),
+                                        Values.Amount.factorize(10000)) //
+                        .sell(chfSecurity, "2015-01-09", Values.Share.factorize(100),
+                                        Values.Amount.factorize(10600)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("international") //
+                        .addTo(client);
+
+        Classification international = taxonomy.getClassificationById("international");
+        international.addAssignment(new Classification.Assignment(usdSecurity));
+        international.addAssignment(new Classification.Assignment(chfSecurity));
+
+        TestCurrencyConverter baseConverter = new TestCurrencyConverter();
+
+        List<Trade> trades = new java.util.ArrayList<>();
+        for (Security security : List.of(usdSecurity, chfSecurity))
+        {
+            var securityConverter = baseConverter.with(security.getCurrencyCode());
+            trades.addAll(new TradeCollector(client, securityConverter).collect(security));
+        }
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, baseConverter);
+
+        TradeCategory internationalCategory = grouped.byClassification(international);
+        assertThat(internationalCategory, notNullValue());
+        assertThat(internationalCategory.getTradeCount(), is(2L));
+
+        Money expectedProfit = trades.stream()
+                        .map(trade -> {
+                            LocalDate closingDate = trade.getClosingTransaction()
+                                            .map(tx -> tx.getTransaction().getDateTime().toLocalDate())
+                                            .orElse(LocalDate.now());
+                            return trade.getProfitLoss().with(baseConverter.at(closingDate));
+                        }).collect(MoneyCollectors.sum(baseConverter.getTermCurrency()));
+
+        Money expectedEntryValue = trades.stream()
+                        .map(trade -> {
+                            LocalDate closingDate = trade.getClosingTransaction()
+                                            .map(tx -> tx.getTransaction().getDateTime().toLocalDate())
+                                            .orElse(LocalDate.now());
+                            return trade.getEntryValue().with(baseConverter.at(closingDate));
+                        }).collect(MoneyCollectors.sum(baseConverter.getTermCurrency()));
+
+        double expectedReturn = expectedEntryValue.getAmount() != 0
+                        ? expectedProfit.getAmount() / (double) expectedEntryValue.getAmount()
+                        : 0d;
+
+        assertThat(internationalCategory.getTotalProfitLoss(), is(expectedProfit));
+        assertThat(internationalCategory.getTotalProfitLossWithoutTaxesAndFees(), is(expectedProfit));
+        assertThat(internationalCategory.getAverageReturn(), is(expectedReturn));
+        assertThat(grouped.getTotalProfitLoss(), is(expectedProfit));
     }
 }

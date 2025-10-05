@@ -179,7 +179,8 @@ public class TradeCategory
             if (!trade.isClosed())
             {
                 dates.add(LocalDate.now());
-                double amount = trade.getExitValue().getAmount() / Values.Amount.divider();
+                double amount = convertAtClosingDate(trade, trade.getExitValue()).getAmount()
+                                / Values.Amount.divider();
                 amount *= weight;
                 if (!isLong)
                     amount = collateral[0] - amount;
@@ -225,19 +226,22 @@ public class TradeCategory
         else
         {
             this.totalProfitLoss = weightedTrades.stream()
-                            .map(wt -> wt.trade.getProfitLoss().multiplyAndRound(wt.weight))
+                            .map(wt -> convertAtClosingDate(wt.trade, wt.trade.getProfitLoss())
+                                            .multiplyAndRound(wt.weight))
                             .collect(MoneyCollectors.sum(converter.getTermCurrency()));
 
             this.totalProfitLossWithoutTaxesAndFees = weightedTrades.stream()
-                            .map(wt -> wt.trade.getProfitLossWithoutTaxesAndFees().multiplyAndRound(wt.weight))
+                            .map(wt -> convertAtClosingDate(wt.trade, wt.trade.getProfitLossWithoutTaxesAndFees())
+                                            .multiplyAndRound(wt.weight))
                             .collect(MoneyCollectors.sum(converter.getTermCurrency()));
 
             // Calculate category-level IRR by combining all cash flows
             this.averageIRR = calculateCategoryIRR();
-            
+
             // Calculate category-level return from aggregate P&L and entry value
             Money totalEntryValue = weightedTrades.stream()
-                            .map(wt -> wt.trade.getEntryValue().multiplyAndRound(wt.weight))
+                            .map(wt -> convertAtClosingDate(wt.trade, wt.trade.getEntryValue())
+                                            .multiplyAndRound(wt.weight))
                             .collect(MoneyCollectors.sum(converter.getTermCurrency()));
 
             if (totalEntryValue.getAmount() != 0)
@@ -259,6 +263,13 @@ public class TradeCategory
         }
 
         this.calculated = true;
+    }
+
+    private Money convertAtClosingDate(Trade trade, Money amount)
+    {
+        LocalDate conversionDate = trade.getClosingTransaction()
+                        .map(tx -> tx.getTransaction().getDateTime().toLocalDate()).orElse(LocalDate.now());
+        return amount.with(converter.at(conversionDate));
     }
 
     public List<TradeCategory> sortByProfitLoss()
