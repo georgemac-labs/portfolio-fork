@@ -30,7 +30,6 @@ import name.abuchen.portfolio.snapshot.trades.TradeTotals;
 import name.abuchen.portfolio.ui.Images;
 import name.abuchen.portfolio.ui.Messages;
 import name.abuchen.portfolio.ui.editor.AbstractFinanceView;
-import name.abuchen.portfolio.ui.views.trades.TradeElement;
 import name.abuchen.portfolio.ui.util.Colors;
 import name.abuchen.portfolio.ui.util.TabularDataSource;
 import name.abuchen.portfolio.ui.util.viewers.Column;
@@ -47,6 +46,7 @@ import name.abuchen.portfolio.ui.util.viewers.ToolTipCustomProviderSupport;
 import name.abuchen.portfolio.ui.views.columns.IsinColumn;
 import name.abuchen.portfolio.ui.views.columns.SymbolColumn;
 import name.abuchen.portfolio.ui.views.columns.WknColumn;
+import name.abuchen.portfolio.ui.views.trades.TradeElement;
 import name.abuchen.portfolio.util.TextUtil;
 
 public class TradesTableViewer
@@ -157,10 +157,11 @@ public class TradesTableViewer
     private void createTradesColumns(ShowHideColumnHelper support, ViewMode viewMode)
     {
         Column column;
-        
+
         if (viewMode == ViewMode.MULTIPLE_SECURITES)
         {
-            // Custom name column that handles both trades (showing security name)
+            // Custom name column that handles both trades (showing security
+            // name)
             // and categories (showing classification name in bold)
             column = new Column("name", Messages.ColumnName, SWT.LEFT, 300); //$NON-NLS-1$
             column.setLabelProvider(new ColumnLabelProvider()
@@ -223,20 +224,26 @@ public class TradesTableViewer
         support.addColumn(column);
 
         column = new Column("end", Messages.ColumnEndDate, SWT.None, 80); //$NON-NLS-1$
-        column.setLabelProvider(
-                        new DateTimeLabelProvider(
-                                        e -> {
-                                            Trade trade = asTrade(e);
-                                            return trade != null ? trade.getEnd().orElse(null) : null;
-                                        }, Messages.LabelOpenTrade)
-                        {
-                            @Override
-                            public Color getBackground(Object e)
-                            {
-                                Trade trade = asTrade(e);
-                                return trade != null && trade.isClosed() ? null : Colors.theme().warningBackground();
-                            }
-                        });
+        column.setLabelProvider(new DateTimeLabelProvider(e -> {
+            Trade trade = asTrade(e);
+            return trade != null ? trade.getEnd().orElse(null) : null;
+        }, Messages.LabelOpenTrade)
+        {
+            @Override
+            public String getText(Object e)
+            {
+                if (isCategory(e) || isTotal(e))
+                    return null;
+                return super.getText(e);
+            }
+
+            @Override
+            public Color getBackground(Object e)
+            {
+                Trade trade = asTrade(e);
+                return trade != null && trade.isClosed() ? null : Colors.theme().warningBackground();
+            }
+        });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
@@ -446,7 +453,7 @@ public class TradesTableViewer
                 Trade trade = asTrade(e);
                 if (trade != null)
                     return Values.Money.format(averagePurchasePriceMovingAverage.apply(trade),
-                                view.getClient().getBaseCurrency());
+                                    view.getClient().getBaseCurrency());
                 return null;
             }
         });
@@ -823,8 +830,9 @@ public class TradesTableViewer
         }));
         column.setVisible(false);
         support.addColumn(column);
-        
-        // Wrap all sorters with TradeElementComparator to maintain taxonomy grouping
+
+        // Wrap all sorters with TradeElementComparator to maintain taxonomy
+        // grouping
         support.getColumns().forEach(col -> {
             if (col.getSorter() != null)
                 col.getSorter().wrap(TradeElementComparator::new);
@@ -868,7 +876,8 @@ public class TradesTableViewer
         @Override
         public int compare(Object o1, Object o2)
         {
-            // Extract sortOrder from TradeElements, otherwise use 0 for plain Trades
+            // Extract sortOrder from TradeElements, otherwise use 0 for plain
+            // Trades
             int a = o1 instanceof TradeElement ? ((TradeElement) o1).getSortOrder() : 0;
             int b = o2 instanceof TradeElement ? ((TradeElement) o2).getSortOrder() : 0;
 
