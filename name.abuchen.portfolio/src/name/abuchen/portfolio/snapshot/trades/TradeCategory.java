@@ -182,8 +182,9 @@ public class TradeCategory
             boolean isLong = trade.isLong();
 
             // Collect cash flows from all transactions in this trade
-            double[] collateral = {0};
-            trade.getTransactions().forEach(txPair -> {
+            double collateral = 0;
+            for (Trade.TransactionPair txPair : trade.getTransactions())
+            {
                 LocalDate date = txPair.getTransaction().getDateTime().toLocalDate();
                 double amount = txPair.getTransaction().getMonetaryAmount()
                                 .with(converter.at(txPair.getTransaction().getDateTime())).getAmount()
@@ -194,18 +195,18 @@ public class TradeCategory
 
                 if (txPair.getTransaction().getType().isPurchase() == isLong)
                 {
-                    collateral[0] += amount;
+                    collateral += amount;
                     amount = -amount;
                 }
                 else if (!isLong)
                 {
                     // for short trade, for the closing transaction, we look
                     // how much collateral we should return
-                    amount = collateral[0] - amount;
+                    amount = collateral - amount;
                 }
 
                 cashflows.add(new WeightedCashFlow(date, amount, sequence++));
-            });
+            }
 
             // If trade is still open, add current market value as final cash flow
             if (!trade.isClosed())
@@ -214,7 +215,7 @@ public class TradeCategory
                 double amount = trade.getExitValue().getAmount() / Values.Amount.divider();
                 amount *= weight;
                 if (!isLong)
-                    amount = collateral[0] - amount;
+                    amount = collateral - amount;
                 cashflows.add(new WeightedCashFlow(date, amount, sequence++));
             }
 
@@ -222,7 +223,7 @@ public class TradeCategory
             if (!isLong)
             {
                 LocalDate endDate = trade.isClosed() ? trade.getEnd().get().toLocalDate() : LocalDate.now();
-                cashflows.add(new WeightedCashFlow(endDate, collateral[0], sequence++));
+                cashflows.add(new WeightedCashFlow(endDate, collateral, sequence++));
             }
         }
 
