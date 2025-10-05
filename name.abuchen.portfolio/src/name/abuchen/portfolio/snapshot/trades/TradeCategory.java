@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import name.abuchen.portfolio.math.IRR;
@@ -35,6 +36,20 @@ public class TradeCategory
         {
             this.trade = trade;
             this.weight = weight;
+        }
+    }
+
+    private static final class WeightedCashFlow
+    {
+        private final LocalDate date;
+        private final double amount;
+        private final int order;
+
+        private WeightedCashFlow(LocalDate date, double amount, int order)
+        {
+            this.date = date;
+            this.amount = amount;
+            this.order = order;
         }
     }
 
@@ -158,8 +173,8 @@ public class TradeCategory
      */
     private double calculateCategoryIRR()
     {
-        List<LocalDate> dates = new ArrayList<>();
-        List<Double> values = new ArrayList<>();
+        List<WeightedCashFlow> cashflows = new ArrayList<>();
+        AtomicInteger sequence = new AtomicInteger();
 
         for (WeightedTrade wt : weightedTrades)
         {
@@ -170,8 +185,7 @@ public class TradeCategory
             // Collect cash flows from all transactions in this trade
             double[] collateral = {0};
             trade.getTransactions().forEach(txPair -> {
-                dates.add(txPair.getTransaction().getDateTime().toLocalDate());
-
+                LocalDate date = txPair.getTransaction().getDateTime().toLocalDate();
                 double amount = txPair.getTransaction().getMonetaryAmount()
                                 .with(converter.at(txPair.getTransaction().getDateTime())).getAmount()
                                 / Values.Amount.divider();
@@ -191,32 +205,42 @@ public class TradeCategory
                     amount = collateral[0] - amount;
                 }
 
-                values.add(amount);
+                cashflows.add(new WeightedCashFlow(date, amount, sequence.getAndIncrement()));
             });
 
             // If trade is still open, add current market value as final cash flow
             if (!trade.isClosed())
             {
-                dates.add(LocalDate.now());
+                LocalDate date = LocalDate.now();
                 double amount = trade.getExitValue().getAmount() / Values.Amount.divider();
                 amount *= weight;
                 if (!isLong)
                     amount = collateral[0] - amount;
-                values.add(amount);
+                cashflows.add(new WeightedCashFlow(date, amount, sequence.getAndIncrement()));
             }
 
             // For short trades, add final collateral return
             if (!isLong)
             {
                 LocalDate endDate = trade.isClosed() ? trade.getEnd().get().toLocalDate() : LocalDate.now();
-                dates.add(endDate);
-                values.add(collateral[0]);
+                cashflows.add(new WeightedCashFlow(endDate, collateral[0], sequence.getAndIncrement()));
             }
         }
 
         // If we have no cash flows, return 0
-        if (dates.isEmpty() || values.isEmpty())
+        if (cashflows.isEmpty())
             return 0;
+
+        cashflows.sort(Comparator.comparing((WeightedCashFlow cf) -> cf.date).thenComparingInt(cf -> cf.order));
+
+        List<LocalDate> dates = new ArrayList<>(cashflows.size());
+        List<Double> values = new ArrayList<>(cashflows.size());
+
+        for (WeightedCashFlow cashflow : cashflows)
+        {
+            dates.add(cashflow.date);
+            values.add(cashflow.amount);
+        }
 
         // Calculate IRR from combined cash flows
         double irr = IRR.calculate(dates, values);

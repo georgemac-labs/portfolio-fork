@@ -3,6 +3,7 @@ package name.abuchen.portfolio.snapshot.trades;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.greaterThan;
 
 import java.util.List;
 
@@ -254,5 +255,59 @@ public class TradesGroupedByTaxonomyTest
 
         // total should still be 1000
         assertThat(grouped.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
+    }
+
+    @Test
+    public void testTotalIRRRemainsPositiveWithOutOfOrderClosingDates() throws Exception
+    {
+        Client client = new Client();
+
+        Security longHold = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-03-10", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Security quickFlip = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-01-20", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2020-01-01", Values.Amount.factorize(30000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(longHold, "2020-01-10", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(longHold, "2020-03-10", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .buy(quickFlip, "2020-01-05", Values.Share.factorize(50), Values.Amount.factorize(5000)) //
+                        .sell(quickFlip, "2020-01-20", Values.Share.factorize(50), Values.Amount.factorize(5500)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("equities") //
+                        .addTo(client);
+
+        Classification equities = taxonomy.getClassificationById("equities");
+        equities.addAssignment(new Classification.Assignment(longHold));
+        equities.addAssignment(new Classification.Assignment(quickFlip));
+
+        TestCurrencyConverter converter = new TestCurrencyConverter();
+        TradeCollector collector = new TradeCollector(client, converter);
+
+        List<Trade> trades = new java.util.ArrayList<>();
+        trades.addAll(collector.collect(longHold));
+        trades.addAll(collector.collect(quickFlip));
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
+
+        Classification totalClassification = new Classification(null, "total", "Total");
+        TradeCategory totals = new TradeCategory(totalClassification, converter);
+        for (Trade trade : grouped.getTrades())
+        {
+            totals.addTrade(trade, 1.0);
+        }
+
+        assertThat(totals.getTotalProfitLoss().getAmount(), greaterThan(0L));
+        assertThat(totals.getAverageIRR(), greaterThan(0.0));
     }
 }
