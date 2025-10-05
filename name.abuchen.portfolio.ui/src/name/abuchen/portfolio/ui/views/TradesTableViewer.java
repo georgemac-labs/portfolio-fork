@@ -585,7 +585,8 @@ public class TradesTableViewer
             TradeTotals totals = asTotals(element);
             if (totals != null)
                 return totals.getTotalProfitLossMovingAverage();
-            return null;
+            TradeCategory category = asCategory(element);
+            return category != null ? category.getTotalProfitLossMovingAverage() : null;
         }, view.getClient()));
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
@@ -594,7 +595,8 @@ public class TradesTableViewer
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getTotalProfitLossMovingAverage();
-            return null;
+            TradeCategory category = asCategory(e);
+            return category != null ? category.getTotalProfitLossMovingAverage() : null;
         }));
         column.setVisible(false);
         support.addColumn(column);
@@ -611,7 +613,8 @@ public class TradesTableViewer
             TradeTotals totals = asTotals(element);
             if (totals != null)
                 return totals.getTotalProfitLossMovingAverageWithoutTaxesAndFees();
-            return null;
+            TradeCategory category = asCategory(element);
+            return category != null ? category.getTotalProfitLossMovingAverageWithoutTaxesAndFees() : null;
         }, view.getClient()));
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
@@ -620,7 +623,8 @@ public class TradesTableViewer
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getTotalProfitLossMovingAverageWithoutTaxesAndFees();
-            return null;
+            TradeCategory category = asCategory(e);
+            return category != null ? category.getTotalProfitLossMovingAverageWithoutTaxesAndFees() : null;
         }));
         column.setVisible(false);
         support.addColumn(column);
@@ -727,7 +731,8 @@ public class TradesTableViewer
             TradeTotals totals = asTotals(element);
             if (totals != null)
                 return totals.getAverageReturnMovingAverage();
-            return null;
+            TradeCategory category = asCategory(element);
+            return category != null ? category.getAverageReturnMovingAverage() : null;
         }));
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
@@ -736,7 +741,8 @@ public class TradesTableViewer
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getAverageReturnMovingAverage();
-            return null;
+            TradeCategory category = asCategory(e);
+            return category != null ? category.getAverageReturnMovingAverage() : null;
         }));
         column.setVisible(false);
         support.addColumn(column);
