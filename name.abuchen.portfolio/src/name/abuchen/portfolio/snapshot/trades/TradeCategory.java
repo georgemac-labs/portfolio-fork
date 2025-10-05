@@ -9,6 +9,8 @@ import java.util.stream.Collectors;
 
 import name.abuchen.portfolio.math.IRR;
 import name.abuchen.portfolio.model.Classification;
+import name.abuchen.portfolio.model.PortfolioTransaction;
+import name.abuchen.portfolio.model.TransactionPair;
 import name.abuchen.portfolio.money.CurrencyConverter;
 import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.MoneyCollectors;
@@ -74,12 +76,15 @@ public class TradeCategory
     /**
      * Alternative constructor for multi-currency mode.
      * <p>
-     * Creates a new currency-specific classification and a new converter with the
-     * given currency code.
+     * Creates a new currency-specific classification and a new converter with
+     * the given currency code.
      *
-     * @param classification the original classification
-     * @param converter the original currency converter
-     * @param currencyCode the currency for this category
+     * @param classification
+     *            the original classification
+     * @param converter
+     *            the original currency converter
+     * @param currencyCode
+     *            the currency for this category
      */
     /* package */ TradeCategory(Classification classification, CurrencyConverter converter, String currencyCode)
     {
@@ -167,8 +172,8 @@ public class TradeCategory
 
     /**
      * Calculates the category-level IRR by combining all cash flows from all
-     * trades in this category. This is the mathematically correct approach,
-     * as opposed to averaging individual trade IRRs.
+     * trades in this category. This is the mathematically correct approach, as
+     * opposed to averaging individual trade IRRs.
      */
     private double calculateCategoryIRR()
     {
@@ -183,7 +188,7 @@ public class TradeCategory
 
             // Collect cash flows from all transactions in this trade
             double collateral = 0;
-            for (Trade.TransactionPair txPair : trade.getTransactions())
+            for (TransactionPair<PortfolioTransaction> txPair : trade.getTransactions())
             {
                 LocalDate date = txPair.getTransaction().getDateTime().toLocalDate();
                 double amount = txPair.getTransaction().getMonetaryAmount()
@@ -208,7 +213,8 @@ public class TradeCategory
                 cashflows.add(new WeightedCashFlow(date, amount, sequence++));
             }
 
-            // If trade is still open, add current market value as final cash flow
+            // If trade is still open, add current market value as final cash
+            // flow
             if (!trade.isClosed())
             {
                 LocalDate date = LocalDate.now();
@@ -286,7 +292,8 @@ public class TradeCategory
             // Calculate category-level IRR by combining all cash flows
             this.averageIRR = calculateCategoryIRR();
 
-            // Calculate category-level return from aggregate P&L and entry value
+            // Calculate category-level return from aggregate P&L and entry
+            // value
             Money totalEntryValue = weightedTrades.stream() //
                             .map(wt -> {
                                 Money value = wt.trade.getEntryValue();
@@ -308,8 +315,8 @@ public class TradeCategory
                             weightedTrades.stream().mapToDouble(wt -> wt.trade.getHoldingPeriod() * wt.weight).sum()
                                             / totalWeight);
 
-            double winningWeight = weightedTrades.stream().filter(wt -> !wt.trade.isLoss())
-                            .mapToDouble(wt -> wt.weight).sum();
+            double winningWeight = weightedTrades.stream().filter(wt -> !wt.trade.isLoss()).mapToDouble(wt -> wt.weight)
+                            .sum();
             this.winRate = winningWeight / totalWeight;
         }
 
