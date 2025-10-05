@@ -15,6 +15,7 @@ import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.ActionContributionItem;
 import org.eclipse.jface.action.ControlContribution;
 import org.eclipse.jface.action.IMenuManager;
+import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.action.Separator;
 import org.eclipse.jface.action.ToolBarManager;
 import org.eclipse.jface.dialogs.MessageDialog;
@@ -38,6 +39,7 @@ import name.abuchen.portfolio.snapshot.trades.Trade;
 import name.abuchen.portfolio.snapshot.trades.TradeCategory;
 import name.abuchen.portfolio.snapshot.trades.TradeCollector;
 import name.abuchen.portfolio.snapshot.trades.TradeCollectorException;
+import name.abuchen.portfolio.snapshot.trades.TradeTotals;
 import name.abuchen.portfolio.snapshot.trades.TradesGroupedByTaxonomy;
 import name.abuchen.portfolio.ui.Images;
 import name.abuchen.portfolio.ui.Messages;
@@ -170,6 +172,8 @@ public class TradeDetailsView extends AbstractFinanceView
     }
 
     private static final String PREF_USE_SECURITY_CURRENCY = "useSecurityCurrency"; //$NON-NLS-1$
+    private static final String PREF_HIDE_TOTALS_TOP = TradeDetailsView.class.getSimpleName() + "@hideTotalsTop"; //$NON-NLS-1$
+    private static final String PREF_HIDE_TOTALS_BOTTOM = TradeDetailsView.class.getSimpleName() + "@hideTotalsBottom"; //$NON-NLS-1$
 
     private static final String ID_WARNING_TOOL_ITEM = "warning"; //$NON-NLS-1$
 
@@ -197,6 +201,9 @@ public class TradeDetailsView extends AbstractFinanceView
 
     private MutableBoolean onlyOpen = new MutableBoolean(false);
     private MutableBoolean onlyClosed = new MutableBoolean(false);
+
+    private boolean hideTotalsAtTheTop;
+    private boolean hideTotalsAtTheBottom;
 
     private MutableBoolean onlyProfitable = new MutableBoolean(false);
     private MutableBoolean onlyLossMaking = new MutableBoolean(false);
@@ -227,6 +234,9 @@ public class TradeDetailsView extends AbstractFinanceView
         // read preferences only if not preselected by the setTrades method
         if (usePreselectedTrades.isFalse())
             useSecurityCurrency = preferences.getBoolean(this.getClass().getSimpleName() + PREF_USE_SECURITY_CURRENCY);
+
+        hideTotalsAtTheTop = preferences.getBoolean(PREF_HIDE_TOTALS_TOP);
+        hideTotalsAtTheBottom = preferences.getBoolean(PREF_HIDE_TOTALS_BOTTOM);
     }
 
     @PostConstruct
@@ -438,13 +448,25 @@ public class TradeDetailsView extends AbstractFinanceView
         Control control = table.createViewControl(parent, TradesTableViewer.ViewMode.MULTIPLE_SECURITES);
 
         table.getTableViewer().addSelectionChangedListener(event -> {
-            var selection = event.getStructuredSelection();
-            selectionService.setSelection(selection.isEmpty() ? null
-                            : SecuritySelection.from(getClient(), event.getStructuredSelection()));
+            var structured = event.getStructuredSelection();
+            if (structured.isEmpty())
+            {
+                selectionService.setSelection(null);
+            }
+            else
+            {
+                var securitySelection = SecuritySelection.from(getClient(), structured);
+                selectionService.setSelection(securitySelection.isEmpty() ? null : securitySelection);
+            }
         });
 
-        table.getTableViewer().addSelectionChangedListener(
-                        e -> setInformationPaneInput(e.getStructuredSelection().getFirstElement()));
+        table.getTableViewer().addSelectionChangedListener(e -> {
+            Object first = e.getStructuredSelection().getFirstElement();
+            if (first instanceof TradeElement && ((TradeElement) first).isTotal())
+                setInformationPaneInput(null);
+            else
+                setInformationPaneInput(first);
+        });
 
         table.getTableViewer().addFilter(new ViewerFilter()
         {
@@ -454,9 +476,13 @@ public class TradeDetailsView extends AbstractFinanceView
                 if (filterPattern == null)
                     return true;
                     
-                // Category rows are always shown
-                if (element instanceof TradeElement && ((TradeElement) element).isCategory())
-                    return true;
+                // Category and total rows are always shown
+                if (element instanceof TradeElement)
+                {
+                    TradeElement tradeElement = (TradeElement) element;
+                    if (tradeElement.isCategory() || tradeElement.isTotal())
+                        return true;
+                }
                 
                 // Extract Trade from either Trade or TradeElement
                 Trade trade = element instanceof Trade ? (Trade) element
@@ -505,15 +531,40 @@ public class TradeDetailsView extends AbstractFinanceView
     {
         IStructuredSelection selection = table.getTableViewer().getStructuredSelection();
 
-        if (selection.isEmpty() || selection.size() > 1)
+        if (!selection.isEmpty() && selection.size() == 1)
+        {
+            Object element = selection.getFirstElement();
+            Trade trade = element instanceof Trade ? (Trade) element
+                            : element instanceof TradeElement ? ((TradeElement) element).getTrade() : null;
+
+            if (trade != null)
+                new SecurityContextMenu(this).menuAboutToShow(manager, trade.getSecurity(), trade.getPortfolio());
+        }
+
+        if (taxonomy == null)
             return;
 
-        Object element = selection.getFirstElement();
-        Trade trade = element instanceof Trade ? (Trade) element
-                        : element instanceof TradeElement ? ((TradeElement) element).getTrade() : null;
-                        
-        if (trade != null)
-            new SecurityContextMenu(this).menuAboutToShow(manager, trade.getSecurity(), trade.getPortfolio());
+        if (!manager.isEmpty())
+            manager.add(new Separator());
+
+        MenuManager submenu = new MenuManager(Messages.PrefTitlePresentation);
+        manager.add(submenu);
+
+        var action = new SimpleAction(Messages.LabelTotalsAtTheTop, a -> {
+            hideTotalsAtTheTop = !hideTotalsAtTheTop;
+            getPreferenceStore().setValue(PREF_HIDE_TOTALS_TOP, hideTotalsAtTheTop);
+            update();
+        });
+        action.setChecked(!hideTotalsAtTheTop);
+        submenu.add(action);
+
+        action = new SimpleAction(Messages.LabelTotalsAtTheBottom, a -> {
+            hideTotalsAtTheBottom = !hideTotalsAtTheBottom;
+            getPreferenceStore().setValue(PREF_HIDE_TOTALS_BOTTOM, hideTotalsAtTheBottom);
+            update();
+        });
+        action.setChecked(!hideTotalsAtTheBottom);
+        submenu.add(action);
     }
 
     private void hookKeyListener()
@@ -613,6 +664,11 @@ public class TradeDetailsView extends AbstractFinanceView
     private List<TradeElement> flattenToElements(TradesGroupedByTaxonomy groupedTrades)
     {
         List<TradeElement> elements = new ArrayList<>();
+        TradeTotals totals = new TradeTotals(groupedTrades);
+
+        if (!hideTotalsAtTheTop)
+            elements.add(new TradeElement(totals, 0));
+
         int sortOrder = 1;
 
         for (TradeCategory category : groupedTrades.asList())
@@ -627,10 +683,13 @@ public class TradeDetailsView extends AbstractFinanceView
             {
                 elements.add(new TradeElement(trade, sortOrder));
             }
-            
+
             // Increment sortOrder for next category
             sortOrder++;
         }
+
+        if (!hideTotalsAtTheBottom)
+            elements.add(new TradeElement(totals, Integer.MAX_VALUE));
 
         return elements;
     }

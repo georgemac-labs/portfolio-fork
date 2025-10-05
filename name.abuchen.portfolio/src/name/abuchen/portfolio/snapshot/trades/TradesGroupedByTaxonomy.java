@@ -164,6 +164,11 @@ public class TradesGroupedByTaxonomy
         return Collections.unmodifiableList(categories);
     }
 
+    public List<Trade> getTrades()
+    {
+        return Collections.unmodifiableList(allTrades);
+    }
+
     public Money getTotalProfitLoss()
     {
         return categories.stream().map(TradeCategory::getTotalProfitLoss)

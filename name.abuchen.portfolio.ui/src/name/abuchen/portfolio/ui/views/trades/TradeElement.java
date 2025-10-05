@@ -5,6 +5,7 @@ import name.abuchen.portfolio.model.Adaptor;
 import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.snapshot.trades.Trade;
 import name.abuchen.portfolio.snapshot.trades.TradeCategory;
+import name.abuchen.portfolio.snapshot.trades.TradeTotals;
 
 /**
  * Wrapper element for displaying trades in a flat table with taxonomy
@@ -15,6 +16,7 @@ public class TradeElement implements Adaptable
 {
     private final TradeCategory category;
     private final Trade trade;
+    private final TradeTotals totals;
     private final int sortOrder;
 
     /**
@@ -24,6 +26,7 @@ public class TradeElement implements Adaptable
     {
         this.category = category;
         this.trade = null;
+        this.totals = null;
         this.sortOrder = sortOrder;
     }
 
@@ -34,6 +37,18 @@ public class TradeElement implements Adaptable
     {
         this.category = null;
         this.trade = trade;
+        this.totals = null;
+        this.sortOrder = sortOrder;
+    }
+
+    /**
+     * Creates a totals element
+     */
+    public TradeElement(TradeTotals totals, int sortOrder)
+    {
+        this.category = null;
+        this.trade = null;
+        this.totals = totals;
         this.sortOrder = sortOrder;
     }
 
@@ -47,6 +62,11 @@ public class TradeElement implements Adaptable
         return trade != null;
     }
 
+    public boolean isTotal()
+    {
+        return totals != null;
+    }
+
     public TradeCategory getCategory()
     {
         return category;
@@ -55,6 +75,11 @@ public class TradeElement implements Adaptable
     public Trade getTrade()
     {
         return trade;
+    }
+
+    public TradeTotals getTotals()
+    {
+        return totals;
     }
 
     public Classification getClassification()
@@ -72,6 +97,9 @@ public class TradeElement implements Adaptable
     {
         if (category != null && type.isAssignableFrom(category.getClass()))
             return type.cast(category);
+
+        if (totals != null && type.isAssignableFrom(totals.getClass()))
+            return type.cast(totals);
 
         return Adaptor.adapt(type, trade);
     }
