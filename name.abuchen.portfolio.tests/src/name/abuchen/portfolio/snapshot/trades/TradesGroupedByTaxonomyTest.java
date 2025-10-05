@@ -5,6 +5,7 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThan;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.junit.Test;
@@ -22,6 +23,7 @@ import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.model.Taxonomy;
 import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.money.Money;
+import name.abuchen.portfolio.money.MoneyCollectors;
 import name.abuchen.portfolio.money.Values;
 
 @SuppressWarnings("nls")
@@ -309,5 +311,66 @@ public class TradesGroupedByTaxonomyTest
 
         assertThat(totals.getTotalProfitLoss().getAmount(), greaterThan(0L));
         assertThat(totals.getAverageIRR(), greaterThan(0.0));
+    }
+
+    @Test
+    public void testTotalProfitLossConvertedFromSecurityCurrencies() throws Exception
+    {
+        Client client = new Client();
+
+        Security eurSecurity = new SecurityBuilder(CurrencyUnit.EUR) //
+                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Security usdSecurity = new SecurityBuilder(CurrencyUnit.USD) //
+                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2015-01-01", Values.Amount.factorize(200000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(eurSecurity, "2015-01-02", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(eurSecurity, "2015-01-09", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .buy(usdSecurity, "2015-01-02", Values.Share.factorize(50), Values.Amount.factorize(8000)) //
+                        .sell(usdSecurity, "2015-01-09", Values.Share.factorize(50), Values.Amount.factorize(8500)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("equities") //
+                        .addTo(client);
+
+        Classification equities = taxonomy.getClassificationById("equities");
+        equities.addAssignment(new Classification.Assignment(eurSecurity));
+        equities.addAssignment(new Classification.Assignment(usdSecurity));
+
+        TestCurrencyConverter converter = new TestCurrencyConverter(CurrencyUnit.EUR);
+
+        List<Trade> trades = new java.util.ArrayList<>();
+        trades.addAll(new TradeCollector(client, converter.with(CurrencyUnit.EUR)).collect(eurSecurity));
+        trades.addAll(new TradeCollector(client, converter.with(CurrencyUnit.USD)).collect(usdSecurity));
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
+
+        Money expectedTotal = trades.stream() //
+                        .map(trade -> {
+                            LocalDate date = trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+                            return trade.getProfitLoss().with(converter.at(date));
+                        }) //
+                        .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+
+        assertThat(grouped.getTotalProfitLoss(), is(expectedTotal));
+
+        Money expectedWithout = trades.stream() //
+                        .map(trade -> {
+                            LocalDate date = trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+                            return trade.getProfitLossWithoutTaxesAndFees().with(converter.at(date));
+                        }) //
+                        .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+
+        assertThat(grouped.getTotalProfitLossWithoutTaxesAndFees(), is(expectedWithout));
     }
 }

@@ -1,5 +1,6 @@
 package name.abuchen.portfolio.snapshot.trades;
 
+import java.time.LocalDate;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -171,13 +172,29 @@ public class TradesGroupedByTaxonomy
 
     public Money getTotalProfitLoss()
     {
-        return categories.stream().map(TradeCategory::getTotalProfitLoss)
+        return allTrades.stream()
+                        .map(trade -> {
+                            Money pnl = trade.getProfitLoss();
+                            if (pnl == null)
+                                return Money.of(converter.getTermCurrency(), 0);
+
+                            LocalDate date = trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+                            return pnl.with(converter.at(date));
+                        })
                         .collect(MoneyCollectors.sum(converter.getTermCurrency()));
     }
 
     public Money getTotalProfitLossWithoutTaxesAndFees()
     {
-        return categories.stream().map(TradeCategory::getTotalProfitLossWithoutTaxesAndFees)
+        return allTrades.stream()
+                        .map(trade -> {
+                            Money pnl = trade.getProfitLossWithoutTaxesAndFees();
+                            if (pnl == null)
+                                return Money.of(converter.getTermCurrency(), 0);
+
+                            LocalDate date = trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+                            return pnl.with(converter.at(date));
+                        })
                         .collect(MoneyCollectors.sum(converter.getTermCurrency()));
     }
 
