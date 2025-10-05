@@ -356,21 +356,27 @@ public class TradesTableViewer
         column.setLabelProvider(new ColumnLabelProvider()
         {
             @Override
-            public String getText(Object e)
-            {
-                Trade trade = asTrade(e);
-                if (trade != null)
-                    return Values.Money.format(trade.getEntryValue(), view.getClient().getBaseCurrency());
-                TradeTotals totals = asTotals(e);
-                if (totals != null)
-                    return Values.Money.format(totals.getTotalEntryValue(), view.getClient().getBaseCurrency());
-                return null;
-            }
-        });
+                public String getText(Object e)
+                {
+                    Trade trade = asTrade(e);
+                    if (trade != null)
+                        return Values.Money.format(trade.getEntryValue(), view.getClient().getBaseCurrency());
+                    TradeCategory category = asCategory(e);
+                    if (category != null)
+                        return Values.Money.format(category.getTotalEntryValue(), view.getClient().getBaseCurrency());
+                    TradeTotals totals = asTotals(e);
+                    if (totals != null)
+                        return Values.Money.format(totals.getTotalEntryValue(), view.getClient().getBaseCurrency());
+                    return null;
+                }
+            });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
                 return trade.getEntryValue();
+            TradeCategory category = asCategory(e);
+            if (category != null)
+                return category.getTotalEntryValue();
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getTotalEntryValue();
@@ -473,21 +479,27 @@ public class TradesTableViewer
         column.setLabelProvider(new ColumnLabelProvider()
         {
             @Override
-            public String getText(Object e)
-            {
-                Trade trade = asTrade(e);
-                if (trade != null)
-                    return Values.Money.format(trade.getExitValue(), view.getClient().getBaseCurrency());
-                TradeTotals totals = asTotals(e);
-                if (totals != null)
-                    return Values.Money.format(totals.getTotalExitValue(), view.getClient().getBaseCurrency());
-                return null;
-            }
-        });
+                public String getText(Object e)
+                {
+                    Trade trade = asTrade(e);
+                    if (trade != null)
+                        return Values.Money.format(trade.getExitValue(), view.getClient().getBaseCurrency());
+                    TradeCategory category = asCategory(e);
+                    if (category != null)
+                        return Values.Money.format(category.getTotalExitValue(), view.getClient().getBaseCurrency());
+                    TradeTotals totals = asTotals(e);
+                    if (totals != null)
+                        return Values.Money.format(totals.getTotalExitValue(), view.getClient().getBaseCurrency());
+                    return null;
+                }
+            });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
                 return trade.getExitValue();
+            TradeCategory category = asCategory(e);
+            if (category != null)
+                return category.getTotalExitValue();
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getTotalExitValue();

@@ -59,6 +59,9 @@ public class TradeCategory
     private final List<WeightedTrade> weightedTrades = new ArrayList<>();
 
     // lazy calculations
+    private Money totalEntryValue;
+    private Money totalEntryValueMovingAverage;
+    private Money totalExitValue;
     private Money totalProfitLoss;
     private Money totalProfitLossWithoutTaxesAndFees;
     private Money totalProfitLossMovingAverage;
@@ -129,6 +132,24 @@ public class TradeCategory
     {
         ensureCalculated();
         return totalProfitLoss;
+    }
+
+    public Money getTotalEntryValue()
+    {
+        ensureCalculated();
+        return totalEntryValue;
+    }
+
+    public Money getTotalEntryValueMovingAverage()
+    {
+        ensureCalculated();
+        return totalEntryValueMovingAverage;
+    }
+
+    public Money getTotalExitValue()
+    {
+        ensureCalculated();
+        return totalExitValue;
     }
 
     public Money getTotalProfitLossWithoutTaxesAndFees()
@@ -285,6 +306,9 @@ public class TradeCategory
 
         if (totalWeight == 0)
         {
+            this.totalEntryValue = Money.of(converter.getTermCurrency(), 0);
+            this.totalEntryValueMovingAverage = Money.of(converter.getTermCurrency(), 0);
+            this.totalExitValue = Money.of(converter.getTermCurrency(), 0);
             this.totalProfitLoss = Money.of(converter.getTermCurrency(), 0);
             this.totalProfitLossWithoutTaxesAndFees = Money.of(converter.getTermCurrency(), 0);
             this.totalProfitLossMovingAverage = Money.of(converter.getTermCurrency(), 0);
@@ -297,6 +321,36 @@ public class TradeCategory
         }
         else
         {
+            this.totalEntryValue = weightedTrades.stream() //
+                            .map(wt -> {
+                                Money value = wt.trade.getEntryValue();
+                                if (value == null)
+                                    return Money.of(converter.getTermCurrency(), 0);
+                                LocalDate date = wt.trade.getStart().toLocalDate();
+                                return value.with(converter.at(date)).multiplyAndRound(wt.weight);
+                            }) //
+                            .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+
+            this.totalEntryValueMovingAverage = weightedTrades.stream() //
+                            .map(wt -> {
+                                Money value = wt.trade.getEntryValueMovingAverage();
+                                if (value == null)
+                                    return Money.of(converter.getTermCurrency(), 0);
+                                LocalDate date = wt.trade.getStart().toLocalDate();
+                                return value.with(converter.at(date)).multiplyAndRound(wt.weight);
+                            }) //
+                            .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+
+            this.totalExitValue = weightedTrades.stream() //
+                            .map(wt -> {
+                                Money value = wt.trade.getExitValue();
+                                if (value == null)
+                                    return Money.of(converter.getTermCurrency(), 0);
+                                LocalDate date = wt.trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+                                return value.with(converter.at(date)).multiplyAndRound(wt.weight);
+                            }) //
+                            .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+
             this.totalProfitLoss = weightedTrades.stream() //
                             .map(wt -> {
                                 Money pnl = wt.trade.getProfitLoss();
@@ -334,14 +388,6 @@ public class TradeCategory
 
             // Calculate category-level return from aggregate P&L and entry
             // value
-            Money totalEntryValue = weightedTrades.stream() //
-                            .map(wt -> {
-                                Money value = wt.trade.getEntryValue();
-                                LocalDate date = wt.trade.getStart().toLocalDate();
-                                return value.with(converter.at(date)).multiplyAndRound(wt.weight);
-                            }) //
-                            .collect(MoneyCollectors.sum(converter.getTermCurrency()));
-
             if (totalEntryValue.getAmount() != 0)
             {
                 this.averageReturn = totalProfitLoss.getAmount() / (double) totalEntryValue.getAmount();
@@ -350,14 +396,6 @@ public class TradeCategory
             {
                 this.averageReturn = 0;
             }
-
-            Money totalEntryValueMovingAverage = weightedTrades.stream() //
-                            .map(wt -> {
-                                Money value = wt.trade.getEntryValueMovingAverage();
-                                LocalDate date = wt.trade.getStart().toLocalDate();
-                                return value.with(converter.at(date)).multiplyAndRound(wt.weight);
-                            }) //
-                            .collect(MoneyCollectors.sum(converter.getTermCurrency()));
 
             if (totalEntryValueMovingAverage.getAmount() != 0)
             {
