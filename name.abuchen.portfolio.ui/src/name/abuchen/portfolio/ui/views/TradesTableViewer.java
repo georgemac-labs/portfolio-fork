@@ -258,14 +258,6 @@ public class TradesTableViewer
                 if (trade != null)
                     return String.valueOf(trade.getTransactions().size());
 
-                TradeTotals totals = asTotals(e);
-                if (totals != null)
-                    return String.valueOf(totals.getTradeCount());
-
-                TradeCategory category = asCategory(e);
-                if (category != null)
-                    return String.valueOf(category.getTradeCount());
-
                 return null;
             }
 
@@ -325,13 +317,7 @@ public class TradesTableViewer
         });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            if (trade != null)
-                return trade.getTransactions().size();
-            TradeTotals totals = asTotals(e);
-            if (totals != null)
-                return totals.getTradeCount();
-            TradeCategory category = asCategory(e);
-            return category != null ? category.getTradeCount() : 0;
+            return trade != null ? trade.getTransactions().size() : null;
         }));
         support.addColumn(column);
 
@@ -344,9 +330,6 @@ public class TradesTableViewer
                 Trade trade = asTrade(e);
                 if (trade != null)
                     return trade.getShares();
-                TradeTotals totals = asTotals(e);
-                if (totals != null)
-                    return totals.getTotalShares();
                 return null;
             }
         });
@@ -354,9 +337,6 @@ public class TradesTableViewer
             Trade trade = asTrade(e);
             if (trade != null)
                 return trade.getShares();
-            TradeTotals totals = asTotals(e);
-            if (totals != null)
-                return totals.getTotalShares();
             return null;
         }));
         support.addColumn(column);
@@ -402,9 +382,6 @@ public class TradesTableViewer
                 Trade trade = asTrade(e);
                 if (trade != null)
                     return Values.Money.format(trade.getEntryValueMovingAverage(), view.getClient().getBaseCurrency());
-                TradeTotals totals = asTotals(e);
-                if (totals != null)
-                    return Values.Money.format(totals.getTotalEntryValueMovingAverage(), view.getClient().getBaseCurrency());
                 return null;
             }
         });
@@ -412,9 +389,6 @@ public class TradesTableViewer
             Trade trade = asTrade(e);
             if (trade != null)
                 return trade.getEntryValueMovingAverage();
-            TradeTotals totals = asTotals(e);
-            if (totals != null)
-                return totals.getTotalEntryValueMovingAverage();
             return null;
         }));
         column.setVisible(false);
@@ -439,9 +413,6 @@ public class TradesTableViewer
                 Trade trade = asTrade(e);
                 if (trade != null)
                     return Values.Money.format(averagePurchasePrice.apply(trade), view.getClient().getBaseCurrency());
-                TradeTotals totals = asTotals(e);
-                if (totals != null)
-                    return Values.Money.format(totals.getAverageEntryPrice(), view.getClient().getBaseCurrency());
                 return null;
             }
         });
@@ -449,9 +420,6 @@ public class TradesTableViewer
             Trade trade = asTrade(e);
             if (trade != null)
                 return averagePurchasePrice.apply(trade);
-            TradeTotals totals = asTotals(e);
-            if (totals != null)
-                return totals.getAverageEntryPrice();
             return null;
         }));
         column.setVisible(false);
@@ -479,10 +447,6 @@ public class TradesTableViewer
                 if (trade != null)
                     return Values.Money.format(averagePurchasePriceMovingAverage.apply(trade),
                                 view.getClient().getBaseCurrency());
-                TradeTotals totals = asTotals(e);
-                if (totals != null)
-                    return Values.Money.format(totals.getAverageEntryPriceMovingAverage(),
-                                view.getClient().getBaseCurrency());
                 return null;
             }
         });
@@ -490,9 +454,6 @@ public class TradesTableViewer
             Trade trade = asTrade(e);
             if (trade != null)
                 return averagePurchasePriceMovingAverage.apply(trade);
-            TradeTotals totals = asTotals(e);
-            if (totals != null)
-                return totals.getAverageEntryPriceMovingAverage();
             return null;
         }));
         column.setVisible(false);
@@ -542,9 +503,6 @@ public class TradesTableViewer
                 Trade trade = asTrade(e);
                 if (trade != null)
                     return Values.Money.format(averageSellPrice.apply(trade), view.getClient().getBaseCurrency());
-                TradeTotals totals = asTotals(e);
-                if (totals != null)
-                    return Values.Money.format(totals.getAverageExitPrice(), view.getClient().getBaseCurrency());
                 return null;
             }
         });
@@ -552,9 +510,6 @@ public class TradesTableViewer
             Trade trade = asTrade(e);
             if (trade != null)
                 return averageSellPrice.apply(trade);
-            TradeTotals totals = asTotals(e);
-            if (totals != null)
-                return totals.getAverageExitPrice();
             return null;
         }));
         column.setVisible(false);
