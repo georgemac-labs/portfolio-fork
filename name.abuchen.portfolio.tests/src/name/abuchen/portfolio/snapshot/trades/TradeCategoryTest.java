@@ -2,6 +2,7 @@ package name.abuchen.portfolio.snapshot.trades;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.closeTo;
 
 import org.junit.Test;
 
@@ -63,8 +64,13 @@ public class TradeCategoryTest
         // verify aggregations
         assertThat(category.getTradeCount(), is(1L));
         assertThat(category.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
+        assertThat(category.getTotalProfitLossMovingAverage(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
+        assertThat(category.getTotalProfitLossMovingAverageWithoutTaxesAndFees(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
         assertThat(category.getWinningTradesCount(), is(1L));
         assertThat(category.getLosingTradesCount(), is(0L));
+        assertThat(category.getAverageReturnMovingAverage(), is(closeTo(0.1, 1e-10)));
     }
 
     @Test
@@ -103,6 +109,11 @@ public class TradeCategoryTest
 
         // verify weighted aggregations - profit should be 50% of 1000 = 500
         assertThat(category.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(500))));
+        assertThat(category.getTotalProfitLossMovingAverage(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(500))));
+        assertThat(category.getTotalProfitLossMovingAverageWithoutTaxesAndFees(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(500))));
+        assertThat(category.getAverageReturnMovingAverage(), is(closeTo(0.1, 1e-10)));
     }
 
     @Test

@@ -61,7 +61,10 @@ public class TradeCategory
     // lazy calculations
     private Money totalProfitLoss;
     private Money totalProfitLossWithoutTaxesAndFees;
+    private Money totalProfitLossMovingAverage;
+    private Money totalProfitLossMovingAverageWithoutTaxesAndFees;
     private double averageReturn;
+    private double averageReturnMovingAverage;
     private double averageIRR;
     private long averageHoldingPeriod;
     private double winRate;
@@ -134,10 +137,28 @@ public class TradeCategory
         return totalProfitLossWithoutTaxesAndFees;
     }
 
+    public Money getTotalProfitLossMovingAverage()
+    {
+        ensureCalculated();
+        return totalProfitLossMovingAverage;
+    }
+
+    public Money getTotalProfitLossMovingAverageWithoutTaxesAndFees()
+    {
+        ensureCalculated();
+        return totalProfitLossMovingAverageWithoutTaxesAndFees;
+    }
+
     public double getAverageReturn()
     {
         ensureCalculated();
         return averageReturn;
+    }
+
+    public double getAverageReturnMovingAverage()
+    {
+        ensureCalculated();
+        return averageReturnMovingAverage;
     }
 
     public double getAverageIRR()
@@ -266,7 +287,10 @@ public class TradeCategory
         {
             this.totalProfitLoss = Money.of(converter.getTermCurrency(), 0);
             this.totalProfitLossWithoutTaxesAndFees = Money.of(converter.getTermCurrency(), 0);
+            this.totalProfitLossMovingAverage = Money.of(converter.getTermCurrency(), 0);
+            this.totalProfitLossMovingAverageWithoutTaxesAndFees = Money.of(converter.getTermCurrency(), 0);
             this.averageReturn = 0;
+            this.averageReturnMovingAverage = 0;
             this.averageIRR = 0;
             this.averageHoldingPeriod = 0;
             this.winRate = 0;
@@ -284,6 +308,22 @@ public class TradeCategory
             this.totalProfitLossWithoutTaxesAndFees = weightedTrades.stream() //
                             .map(wt -> {
                                 Money pnl = wt.trade.getProfitLossWithoutTaxesAndFees();
+                                LocalDate date = wt.trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+                                return pnl.with(converter.at(date)).multiplyAndRound(wt.weight);
+                            }) //
+                            .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+
+            this.totalProfitLossMovingAverage = weightedTrades.stream() //
+                            .map(wt -> {
+                                Money pnl = wt.trade.getProfitLossMovingAverage();
+                                LocalDate date = wt.trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+                                return pnl.with(converter.at(date)).multiplyAndRound(wt.weight);
+                            }) //
+                            .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+
+            this.totalProfitLossMovingAverageWithoutTaxesAndFees = weightedTrades.stream() //
+                            .map(wt -> {
+                                Money pnl = wt.trade.getProfitLossMovingAverageWithoutTaxesAndFees();
                                 LocalDate date = wt.trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
                                 return pnl.with(converter.at(date)).multiplyAndRound(wt.weight);
                             }) //
@@ -309,6 +349,24 @@ public class TradeCategory
             else
             {
                 this.averageReturn = 0;
+            }
+
+            Money totalEntryValueMovingAverage = weightedTrades.stream() //
+                            .map(wt -> {
+                                Money value = wt.trade.getEntryValueMovingAverage();
+                                LocalDate date = wt.trade.getStart().toLocalDate();
+                                return value.with(converter.at(date)).multiplyAndRound(wt.weight);
+                            }) //
+                            .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+
+            if (totalEntryValueMovingAverage.getAmount() != 0)
+            {
+                this.averageReturnMovingAverage = totalProfitLossMovingAverage.getAmount()
+                                / (double) totalEntryValueMovingAverage.getAmount();
+            }
+            else
+            {
+                this.averageReturnMovingAverage = 0;
             }
 
             this.averageHoldingPeriod = Math.round(
