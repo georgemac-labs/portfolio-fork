@@ -57,6 +57,25 @@ public class TradeCategory
         this.converter = converter;
     }
 
+    /**
+     * Alternative constructor for multi-currency mode.
+     * <p>
+     * Creates a new currency-specific classification and a new converter with the
+     * given currency code.
+     *
+     * @param classification the original classification
+     * @param converter the original currency converter
+     * @param currencyCode the currency for this category
+     */
+    /* package */ TradeCategory(Classification classification, CurrencyConverter converter, String currencyCode)
+    {
+        this.converter = converter.with(currencyCode);
+        this.classification = new Classification(classification.getParent(), //
+                        classification.getId(), //
+                        classification.getName() + " (" + currencyCode + ")"); //$NON-NLS-1$
+        this.classification.setRank(classification.getRank());
+    }
+
     public Classification getClassification()
     {
         return classification;
@@ -224,20 +243,32 @@ public class TradeCategory
         }
         else
         {
-            this.totalProfitLoss = weightedTrades.stream()
-                            .map(wt -> wt.trade.getProfitLoss().multiplyAndRound(wt.weight))
+            this.totalProfitLoss = weightedTrades.stream() //
+                            .map(wt -> {
+                                Money pnl = wt.trade.getProfitLoss();
+                                LocalDate date = wt.trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+                                return pnl.with(converter.at(date)).multiplyAndRound(wt.weight);
+                            }) //
                             .collect(MoneyCollectors.sum(converter.getTermCurrency()));
 
-            this.totalProfitLossWithoutTaxesAndFees = weightedTrades.stream()
-                            .map(wt -> wt.trade.getProfitLossWithoutTaxesAndFees().multiplyAndRound(wt.weight))
+            this.totalProfitLossWithoutTaxesAndFees = weightedTrades.stream() //
+                            .map(wt -> {
+                                Money pnl = wt.trade.getProfitLossWithoutTaxesAndFees();
+                                LocalDate date = wt.trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+                                return pnl.with(converter.at(date)).multiplyAndRound(wt.weight);
+                            }) //
                             .collect(MoneyCollectors.sum(converter.getTermCurrency()));
 
             // Calculate category-level IRR by combining all cash flows
             this.averageIRR = calculateCategoryIRR();
-            
+
             // Calculate category-level return from aggregate P&L and entry value
-            Money totalEntryValue = weightedTrades.stream()
-                            .map(wt -> wt.trade.getEntryValue().multiplyAndRound(wt.weight))
+            Money totalEntryValue = weightedTrades.stream() //
+                            .map(wt -> {
+                                Money value = wt.trade.getEntryValue();
+                                LocalDate date = wt.trade.getStart().toLocalDate();
+                                return value.with(converter.at(date)).multiplyAndRound(wt.weight);
+                            }) //
                             .collect(MoneyCollectors.sum(converter.getTermCurrency()));
 
             if (totalEntryValue.getAmount() != 0)
