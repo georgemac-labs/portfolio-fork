@@ -1,5 +1,6 @@
 package name.abuchen.portfolio.ui.views.trades;
 
+import name.abuchen.portfolio.model.Adaptable;
 import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.snapshot.trades.Trade;
 import name.abuchen.portfolio.snapshot.trades.TradeCategory;
@@ -9,7 +10,7 @@ import name.abuchen.portfolio.snapshot.trades.TradeCategory;
  * grouping. Can represent either a category (taxonomy classification) or an
  * individual trade.
  */
-public class TradeElement
+public class TradeElement implements Adaptable
 {
     private final TradeCategory category;
     private final Trade trade;
@@ -63,5 +64,17 @@ public class TradeElement
     public int getSortOrder()
     {
         return sortOrder;
+    }
+
+    @Override
+    public <T> T adapt(Class<T> type)
+    {
+        if (!isTrade())
+            return null;
+
+        if (type.isInstance(trade))
+            return type.cast(trade);
+
+        return trade.adapt(type);
     }
 }
