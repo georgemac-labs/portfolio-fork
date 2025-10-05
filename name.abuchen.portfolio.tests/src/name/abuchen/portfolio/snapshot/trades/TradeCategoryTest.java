@@ -63,6 +63,8 @@ public class TradeCategoryTest
 
         // verify aggregations
         assertThat(category.getTradeCount(), is(1L));
+        assertThat(category.getTotalEntryValue(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(10000))));
+        assertThat(category.getTotalExitValue(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(11000))));
         assertThat(category.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
         assertThat(category.getTotalProfitLossMovingAverage(),
                         is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
@@ -108,6 +110,8 @@ public class TradeCategoryTest
         category.addTrade(trades.get(0), 0.5);
 
         // verify weighted aggregations - profit should be 50% of 1000 = 500
+        assertThat(category.getTotalEntryValue(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(5000))));
+        assertThat(category.getTotalExitValue(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(5500))));
         assertThat(category.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(500))));
         assertThat(category.getTotalProfitLossMovingAverage(),
                         is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(500))));
