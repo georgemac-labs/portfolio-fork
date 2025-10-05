@@ -26,6 +26,7 @@ import name.abuchen.portfolio.money.Quote;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.trades.Trade;
 import name.abuchen.portfolio.snapshot.trades.TradeCategory;
+import name.abuchen.portfolio.snapshot.trades.TradeTotals;
 import name.abuchen.portfolio.ui.Images;
 import name.abuchen.portfolio.ui.Messages;
 import name.abuchen.portfolio.ui.editor.AbstractFinanceView;
@@ -105,6 +106,29 @@ public class TradesTableViewer
         return null;
     }
 
+    /**
+     * Helper method to check if an element is a totals row
+     */
+    private static boolean isTotal(Object element)
+    {
+        return element instanceof TradeElement && ((TradeElement) element).isTotal();
+    }
+
+    /**
+     * Helper method to extract TradeTotals from a TradeElement
+     *
+     * @return the TradeTotals, or null if not a totals row
+     */
+    private static TradeTotals asTotals(Object element)
+    {
+        if (element instanceof TradeElement)
+        {
+            TradeElement te = (TradeElement) element;
+            return te.isTotal() ? te.getTotals() : null;
+        }
+        return null;
+    }
+
     public Control createViewControl(Composite parent, ViewMode viewMode)
     {
         Composite container = new Composite(parent, SWT.NONE);
@@ -148,6 +172,10 @@ public class TradesTableViewer
                     if (trade != null)
                         return trade.getSecurity().getName();
 
+                    TradeTotals totals = asTotals(e);
+                    if (totals != null)
+                        return Messages.ColumnSum;
+
                     TradeCategory category = asCategory(e);
                     if (category != null)
                         return category.getClassification().getName();
@@ -158,7 +186,7 @@ public class TradesTableViewer
                 @Override
                 public org.eclipse.swt.graphics.Font getFont(Object e)
                 {
-                    return isCategory(e) ? org.eclipse.jface.resource.JFaceResources.getFontRegistry()
+                    return isCategory(e) || isTotal(e) ? org.eclipse.jface.resource.JFaceResources.getFontRegistry()
                                     .getBold(org.eclipse.jface.resource.JFaceResources.DEFAULT_FONT) : null;
                 }
 
@@ -166,13 +194,17 @@ public class TradesTableViewer
                 public Image getImage(Object e)
                 {
                     Trade trade = asTrade(e);
-                    return trade != null ? Images.SECURITY.image() : null;
+                    if (trade != null)
+                        return Images.SECURITY.image();
+                    return null;
                 }
             });
             column.setSorter(ColumnViewerSorter.create(e -> {
                 Trade trade = asTrade(e);
                 if (trade != null)
                     return trade.getSecurity().getName();
+                if (isTotal(e))
+                    return ""; //$NON-NLS-1$
                 TradeCategory category = asCategory(e);
                 return category != null ? category.getClassification().getName() : ""; //$NON-NLS-1$
             }));
@@ -225,6 +257,10 @@ public class TradesTableViewer
                 Trade trade = asTrade(e);
                 if (trade != null)
                     return String.valueOf(trade.getTransactions().size());
+
+                TradeTotals totals = asTotals(e);
+                if (totals != null)
+                    return String.valueOf(totals.getTradeCount());
 
                 TradeCategory category = asCategory(e);
                 if (category != null)
@@ -289,7 +325,13 @@ public class TradesTableViewer
         });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? trade.getTransactions().size() : 0;
+            if (trade != null)
+                return trade.getTransactions().size();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getTradeCount();
+            TradeCategory category = asCategory(e);
+            return category != null ? category.getTradeCount() : 0;
         }));
         support.addColumn(column);
 
@@ -300,12 +342,22 @@ public class TradesTableViewer
             public Long getValue(Object e)
             {
                 Trade trade = asTrade(e);
-                return trade != null ? trade.getShares() : null;
+                if (trade != null)
+                    return trade.getShares();
+                TradeTotals totals = asTotals(e);
+                if (totals != null)
+                    return totals.getTotalShares();
+                return null;
             }
         });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? trade.getShares() : null;
+            if (trade != null)
+                return trade.getShares();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getTotalShares();
+            return null;
         }));
         support.addColumn(column);
 
@@ -318,13 +370,22 @@ public class TradesTableViewer
             public String getText(Object e)
             {
                 Trade trade = asTrade(e);
-                return trade != null ? Values.Money.format(trade.getEntryValue(), view.getClient().getBaseCurrency())
-                                : null;
+                if (trade != null)
+                    return Values.Money.format(trade.getEntryValue(), view.getClient().getBaseCurrency());
+                TradeTotals totals = asTotals(e);
+                if (totals != null)
+                    return Values.Money.format(totals.getTotalEntryValue(), view.getClient().getBaseCurrency());
+                return null;
             }
         });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? trade.getEntryValue() : null;
+            if (trade != null)
+                return trade.getEntryValue();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getTotalEntryValue();
+            return null;
         }));
         support.addColumn(column);
 
@@ -339,12 +400,22 @@ public class TradesTableViewer
             public String getText(Object e)
             {
                 Trade trade = asTrade(e);
-                return trade != null ? Values.Money.format(trade.getEntryValueMovingAverage(), view.getClient().getBaseCurrency()) : null;
+                if (trade != null)
+                    return Values.Money.format(trade.getEntryValueMovingAverage(), view.getClient().getBaseCurrency());
+                TradeTotals totals = asTotals(e);
+                if (totals != null)
+                    return Values.Money.format(totals.getTotalEntryValueMovingAverage(), view.getClient().getBaseCurrency());
+                return null;
             }
         });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? trade.getEntryValueMovingAverage() : null;
+            if (trade != null)
+                return trade.getEntryValueMovingAverage();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getTotalEntryValueMovingAverage();
+            return null;
         }));
         column.setVisible(false);
         support.addColumn(column);
@@ -358,7 +429,7 @@ public class TradesTableViewer
         column = new Column("entryvalue-pershare", Messages.ColumnEntryValue + " (" + Messages.ColumnPerShare + ")", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
                         SWT.RIGHT, 80);
         column.setGroupLabel(Messages.ColumnEntryValue);
-        column.setMenuLabel(Messages.ColumnEntryValue + " (" + Messages.ColumnPerShare + ")" + " (" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        column.setMenuLabel(Messages.ColumnEntryValue + " (" + Messages.ColumnPerShare + ")" + " (" //$NON-NLS-1$ //$NON-NLS-2$//$NON-NLS-3$
                         + CostMethod.FIFO.getLabel() + ")"); //$NON-NLS-1$
         column.setLabelProvider(new ColumnLabelProvider()
         {
@@ -366,12 +437,22 @@ public class TradesTableViewer
             public String getText(Object e)
             {
                 Trade trade = asTrade(e);
-                return trade != null ? Values.Money.format(averagePurchasePrice.apply(trade), view.getClient().getBaseCurrency()) : null;
+                if (trade != null)
+                    return Values.Money.format(averagePurchasePrice.apply(trade), view.getClient().getBaseCurrency());
+                TradeTotals totals = asTotals(e);
+                if (totals != null)
+                    return Values.Money.format(totals.getAverageEntryPrice(), view.getClient().getBaseCurrency());
+                return null;
             }
         });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? averagePurchasePrice.apply(trade) : null;
+            if (trade != null)
+                return averagePurchasePrice.apply(trade);
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getAverageEntryPrice();
+            return null;
         }));
         column.setVisible(false);
         support.addColumn(column);
@@ -387,7 +468,7 @@ public class TradesTableViewer
                                         + CostMethod.MOVING_AVERAGE.getAbbreviation() + ")", //$NON-NLS-1$
                         SWT.RIGHT, 80);
         column.setGroupLabel(Messages.ColumnEntryValue);
-        column.setMenuLabel(Messages.ColumnEntryValue + " (" + Messages.ColumnPerShare + ")" + " (" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        column.setMenuLabel(Messages.ColumnEntryValue + " (" + Messages.ColumnPerShare + ")" + " (" //$NON-NLS-1$ //$NON-NLS-2$//$NON-NLS-3$
                         + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$
         column.setLabelProvider(new ColumnLabelProvider()
         {
@@ -395,13 +476,24 @@ public class TradesTableViewer
             public String getText(Object e)
             {
                 Trade trade = asTrade(e);
-                return trade != null ? Values.Money.format(averagePurchasePriceMovingAverage.apply(trade),
-                                view.getClient().getBaseCurrency()) : null;
+                if (trade != null)
+                    return Values.Money.format(averagePurchasePriceMovingAverage.apply(trade),
+                                view.getClient().getBaseCurrency());
+                TradeTotals totals = asTotals(e);
+                if (totals != null)
+                    return Values.Money.format(totals.getAverageEntryPriceMovingAverage(),
+                                view.getClient().getBaseCurrency());
+                return null;
             }
         });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? averagePurchasePriceMovingAverage.apply(trade) : null;
+            if (trade != null)
+                return averagePurchasePriceMovingAverage.apply(trade);
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getAverageEntryPriceMovingAverage();
+            return null;
         }));
         column.setVisible(false);
         support.addColumn(column);
@@ -414,12 +506,22 @@ public class TradesTableViewer
             public String getText(Object e)
             {
                 Trade trade = asTrade(e);
-                return trade != null ? Values.Money.format(trade.getExitValue(), view.getClient().getBaseCurrency()) : null;
+                if (trade != null)
+                    return Values.Money.format(trade.getExitValue(), view.getClient().getBaseCurrency());
+                TradeTotals totals = asTotals(e);
+                if (totals != null)
+                    return Values.Money.format(totals.getTotalExitValue(), view.getClient().getBaseCurrency());
+                return null;
             }
         });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? trade.getExitValue() : null;
+            if (trade != null)
+                return trade.getExitValue();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getTotalExitValue();
+            return null;
         }));
         support.addColumn(column);
 
@@ -438,12 +540,22 @@ public class TradesTableViewer
             public String getText(Object e)
             {
                 Trade trade = asTrade(e);
-                return trade != null ? Values.Money.format(averageSellPrice.apply(trade), view.getClient().getBaseCurrency()) : null;
+                if (trade != null)
+                    return Values.Money.format(averageSellPrice.apply(trade), view.getClient().getBaseCurrency());
+                TradeTotals totals = asTotals(e);
+                if (totals != null)
+                    return Values.Money.format(totals.getAverageExitPrice(), view.getClient().getBaseCurrency());
+                return null;
             }
         });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? averageSellPrice.apply(trade) : null;
+            if (trade != null)
+                return averageSellPrice.apply(trade);
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getAverageExitPrice();
+            return null;
         }));
         column.setVisible(false);
         support.addColumn(column);
@@ -455,6 +567,9 @@ public class TradesTableViewer
             Trade trade = asTrade(element);
             if (trade != null)
                 return trade.getProfitLoss();
+            TradeTotals totals = asTotals(element);
+            if (totals != null)
+                return totals.getTotalProfitLoss();
             TradeCategory category = asCategory(element);
             return category != null ? category.getTotalProfitLoss() : null;
         }, view.getClient()));
@@ -462,6 +577,9 @@ public class TradesTableViewer
             Trade trade = asTrade(e);
             if (trade != null)
                 return trade.getProfitLoss();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getTotalProfitLoss();
             TradeCategory category = asCategory(e);
             return category != null ? category.getTotalProfitLoss() : null;
         }));
@@ -474,6 +592,9 @@ public class TradesTableViewer
             Trade trade = asTrade(element);
             if (trade != null)
                 return trade.getProfitLossWithoutTaxesAndFees();
+            TradeTotals totals = asTotals(element);
+            if (totals != null)
+                return totals.getTotalProfitLossWithoutTaxesAndFees();
             TradeCategory category = asCategory(element);
             return category != null ? category.getTotalProfitLossWithoutTaxesAndFees() : null;
         }, view.getClient()));
@@ -481,6 +602,9 @@ public class TradesTableViewer
             Trade trade = asTrade(e);
             if (trade != null)
                 return trade.getProfitLossWithoutTaxesAndFees();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getTotalProfitLossWithoutTaxesAndFees();
             TradeCategory category = asCategory(e);
             return category != null ? category.getTotalProfitLossWithoutTaxesAndFees() : null;
         }));
@@ -494,11 +618,21 @@ public class TradesTableViewer
         column.setMenuLabel(Messages.ColumnProfitLoss + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         column.setLabelProvider(new MoneyColorLabelProvider(element -> {
             Trade trade = asTrade(element);
-            return trade != null ? trade.getProfitLossMovingAverage() : null;
+            if (trade != null)
+                return trade.getProfitLossMovingAverage();
+            TradeTotals totals = asTotals(element);
+            if (totals != null)
+                return totals.getTotalProfitLossMovingAverage();
+            return null;
         }, view.getClient()));
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? trade.getProfitLossMovingAverage() : null;
+            if (trade != null)
+                return trade.getProfitLossMovingAverage();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getTotalProfitLossMovingAverage();
+            return null;
         }));
         column.setVisible(false);
         support.addColumn(column);
@@ -510,11 +644,21 @@ public class TradesTableViewer
         column.setMenuLabel(Messages.ColumnGrossProfitLoss + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         column.setLabelProvider(new MoneyColorLabelProvider(element -> {
             Trade trade = asTrade(element);
-            return trade != null ? trade.getProfitLossMovingAverageWithoutTaxesAndFees() : null;
+            if (trade != null)
+                return trade.getProfitLossMovingAverageWithoutTaxesAndFees();
+            TradeTotals totals = asTotals(element);
+            if (totals != null)
+                return totals.getTotalProfitLossMovingAverageWithoutTaxesAndFees();
+            return null;
         }, view.getClient()));
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? trade.getProfitLossMovingAverageWithoutTaxesAndFees() : null;
+            if (trade != null)
+                return trade.getProfitLossMovingAverageWithoutTaxesAndFees();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getTotalProfitLossMovingAverageWithoutTaxesAndFees();
+            return null;
         }));
         column.setVisible(false);
         support.addColumn(column);
@@ -528,6 +672,9 @@ public class TradesTableViewer
                 Trade trade = asTrade(e);
                 if (trade != null)
                     return Long.toString(trade.getHoldingPeriod());
+                TradeTotals totals = asTotals(e);
+                if (totals != null)
+                    return Long.toString(totals.getAverageHoldingPeriod());
                 TradeCategory category = asCategory(e);
                 return category != null ? Long.toString(category.getAverageHoldingPeriod()) : null;
             }
@@ -536,6 +683,9 @@ public class TradesTableViewer
             Trade trade = asTrade(e);
             if (trade != null)
                 return trade.getHoldingPeriod();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getAverageHoldingPeriod();
             TradeCategory category = asCategory(e);
             return category != null ? category.getAverageHoldingPeriod() : null;
         }));
@@ -559,6 +709,9 @@ public class TradesTableViewer
             Trade trade = asTrade(element);
             if (trade != null)
                 return trade.getIRR();
+            TradeTotals totals = asTotals(element);
+            if (totals != null)
+                return totals.getAverageIRR();
             TradeCategory category = asCategory(element);
             return category != null ? category.getAverageIRR() : null;
         }));
@@ -566,6 +719,9 @@ public class TradesTableViewer
             Trade trade = asTrade(e);
             if (trade != null)
                 return trade.getIRR();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getAverageIRR();
             TradeCategory category = asCategory(e);
             return category != null ? category.getAverageIRR() : null;
         }));
@@ -578,6 +734,9 @@ public class TradesTableViewer
             Trade trade = asTrade(element);
             if (trade != null)
                 return trade.getReturn();
+            TradeTotals totals = asTotals(element);
+            if (totals != null)
+                return totals.getAverageReturn();
             TradeCategory category = asCategory(element);
             return category != null ? category.getAverageReturn() : null;
         }));
@@ -585,6 +744,9 @@ public class TradesTableViewer
             Trade trade = asTrade(e);
             if (trade != null)
                 return trade.getReturn();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getAverageReturn();
             TradeCategory category = asCategory(e);
             return category != null ? category.getAverageReturn() : null;
         }));
@@ -598,11 +760,21 @@ public class TradesTableViewer
         column.setMenuLabel(Messages.ColumnReturn + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         column.setLabelProvider(new NumberColorLabelProvider<>(Values.Percent2, element -> {
             Trade trade = asTrade(element);
-            return trade != null ? trade.getReturnMovingAverage() : null;
+            if (trade != null)
+                return trade.getReturnMovingAverage();
+            TradeTotals totals = asTotals(element);
+            if (totals != null)
+                return totals.getAverageReturnMovingAverage();
+            return null;
         }));
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
-            return trade != null ? trade.getReturnMovingAverage() : null;
+            if (trade != null)
+                return trade.getReturnMovingAverage();
+            TradeTotals totals = asTotals(e);
+            if (totals != null)
+                return totals.getAverageReturnMovingAverage();
+            return null;
         }));
         column.setVisible(false);
         support.addColumn(column);
