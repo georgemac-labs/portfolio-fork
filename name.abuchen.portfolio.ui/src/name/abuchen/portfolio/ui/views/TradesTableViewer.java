@@ -240,6 +240,8 @@ public class TradesTableViewer
             @Override
             public Color getBackground(Object e)
             {
+                if (isCategory(e) || isTotal(e))
+                    return null;
                 Trade trade = asTrade(e);
                 return trade != null && trade.isClosed() ? null : Colors.theme().warningBackground();
             }
