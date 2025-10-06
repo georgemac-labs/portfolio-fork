@@ -198,11 +198,6 @@ public class TradesGroupedByTaxonomy
                         .collect(MoneyCollectors.sum(converter.getTermCurrency()));
     }
 
-    public long getTotalTradeCount()
-    {
-        return categories.stream().mapToLong(TradeCategory::getTradeCount).sum();
-    }
-
     /* package */ TradeCategory byClassification(Classification classification)
     {
         for (TradeCategory category : categories)
