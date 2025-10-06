@@ -203,6 +203,18 @@ public class TradesGroupedByTaxonomyTest
         assertThat(healthcareCategory.getTotalProfitLoss(),
                         is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(500))));
 
+        String techCurrency = techCategory.getTotalProfitLoss().getCurrencyCode();
+        Money techContribution = techCategory.getTradeAssignments().stream() //
+                        .map(a -> a.getTrade().getProfitLoss().multiplyAndRound(a.getWeight())) //
+                        .collect(MoneyCollectors.sum(techCurrency));
+        assertThat(techContribution, is(techCategory.getTotalProfitLoss()));
+
+        String healthcareCurrency = healthcareCategory.getTotalProfitLoss().getCurrencyCode();
+        Money healthcareContribution = healthcareCategory.getTradeAssignments().stream() //
+                        .map(a -> a.getTrade().getProfitLoss().multiplyAndRound(a.getWeight())) //
+                        .collect(MoneyCollectors.sum(healthcareCurrency));
+        assertThat(healthcareContribution, is(healthcareCategory.getTotalProfitLoss()));
+
         // total should still be 1000
         assertThat(grouped.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
     }
