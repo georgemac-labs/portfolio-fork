@@ -118,6 +118,11 @@ public class TradeCategoryTest
         assertThat(category.getTotalProfitLossMovingAverageWithoutTaxesAndFees(),
                         is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(500))));
         assertThat(category.getAverageReturnMovingAverage(), is(closeTo(0.1, 1e-10)));
+
+        assertThat(category.getTradeAssignments().size(), is(1));
+        TradeCategory.TradeAssignment assignment = category.getTradeAssignments().get(0);
+        assertThat(assignment.getTrade(), is(trades.get(0)));
+        assertThat(assignment.getWeight(), is(0.5));
     }
 
     @Test

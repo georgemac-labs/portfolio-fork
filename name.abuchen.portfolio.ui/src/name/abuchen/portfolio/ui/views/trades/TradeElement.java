@@ -18,6 +18,7 @@ public class TradeElement implements Adaptable
     private final Trade trade;
     private final TradeTotals totals;
     private final int sortOrder;
+    private final double weight;
 
     /**
      * Creates a category element
@@ -28,17 +29,19 @@ public class TradeElement implements Adaptable
         this.trade = null;
         this.totals = null;
         this.sortOrder = sortOrder;
+        this.weight = 1.0;
     }
 
     /**
      * Creates a trade element
      */
-    public TradeElement(Trade trade, int sortOrder)
+    public TradeElement(Trade trade, int sortOrder, double weight)
     {
         this.category = null;
         this.trade = trade;
         this.totals = null;
         this.sortOrder = sortOrder;
+        this.weight = weight;
     }
 
     /**
@@ -50,6 +53,7 @@ public class TradeElement implements Adaptable
         this.trade = null;
         this.totals = totals;
         this.sortOrder = sortOrder;
+        this.weight = 1.0;
     }
 
     public boolean isCategory()
@@ -90,6 +94,11 @@ public class TradeElement implements Adaptable
     public int getSortOrder()
     {
         return sortOrder;
+    }
+
+    public double getWeight()
+    {
+        return weight;
     }
 
     @Override

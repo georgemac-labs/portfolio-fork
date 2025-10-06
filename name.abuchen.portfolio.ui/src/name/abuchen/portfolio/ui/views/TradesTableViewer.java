@@ -83,6 +83,31 @@ public class TradesTableViewer
         return null;
     }
 
+    private static double getTradeWeight(Object element)
+    {
+        if (element instanceof TradeElement)
+        {
+            TradeElement te = (TradeElement) element;
+            if (te.isTrade())
+                return te.getWeight();
+        }
+        return 1.0;
+    }
+
+    private static Money applyWeight(Money money, double weight)
+    {
+        if (money == null || Double.compare(weight, 1.0) == 0)
+            return money;
+        return money.multiplyAndRound(weight);
+    }
+
+    private static Double applyWeight(double value, double weight)
+    {
+        if (Double.isNaN(value) || Double.compare(weight, 1.0) == 0)
+            return value;
+        return value * weight;
+    }
+
     /**
      * Helper method to check if an element is a category row
      */
@@ -360,7 +385,10 @@ public class TradesTableViewer
                 {
                     Trade trade = asTrade(e);
                     if (trade != null)
-                        return Values.Money.format(trade.getEntryValue(), view.getClient().getBaseCurrency());
+                    {
+                        Money value = applyWeight(trade.getEntryValue(), getTradeWeight(e));
+                        return Values.Money.format(value, view.getClient().getBaseCurrency());
+                    }
                     TradeCategory category = asCategory(e);
                     if (category != null)
                         return Values.Money.format(category.getTotalEntryValue(), view.getClient().getBaseCurrency());
@@ -373,7 +401,7 @@ public class TradesTableViewer
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
-                return trade.getEntryValue();
+                return applyWeight(trade.getEntryValue(), getTradeWeight(e));
             TradeCategory category = asCategory(e);
             if (category != null)
                 return category.getTotalEntryValue();
@@ -396,7 +424,10 @@ public class TradesTableViewer
             {
                 Trade trade = asTrade(e);
                 if (trade != null)
-                    return Values.Money.format(trade.getEntryValueMovingAverage(), view.getClient().getBaseCurrency());
+                {
+                    Money value = applyWeight(trade.getEntryValueMovingAverage(), getTradeWeight(e));
+                    return Values.Money.format(value, view.getClient().getBaseCurrency());
+                }
                 TradeCategory category = asCategory(e);
                 if (category != null)
                     return Values.Money.format(category.getTotalEntryValueMovingAverage(),
@@ -411,7 +442,7 @@ public class TradesTableViewer
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
-                return trade.getEntryValueMovingAverage();
+                return applyWeight(trade.getEntryValueMovingAverage(), getTradeWeight(e));
             TradeCategory category = asCategory(e);
             if (category != null)
                 return category.getTotalEntryValueMovingAverage();
@@ -497,7 +528,10 @@ public class TradesTableViewer
                 {
                     Trade trade = asTrade(e);
                     if (trade != null)
-                        return Values.Money.format(trade.getExitValue(), view.getClient().getBaseCurrency());
+                    {
+                        Money value = applyWeight(trade.getExitValue(), getTradeWeight(e));
+                        return Values.Money.format(value, view.getClient().getBaseCurrency());
+                    }
                     TradeCategory category = asCategory(e);
                     if (category != null)
                         return Values.Money.format(category.getTotalExitValue(), view.getClient().getBaseCurrency());
@@ -510,7 +544,7 @@ public class TradesTableViewer
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
-                return trade.getExitValue();
+                return applyWeight(trade.getExitValue(), getTradeWeight(e));
             TradeCategory category = asCategory(e);
             if (category != null)
                 return category.getTotalExitValue();
@@ -556,7 +590,7 @@ public class TradesTableViewer
         column.setLabelProvider(new MoneyColorLabelProvider(element -> {
             Trade trade = asTrade(element);
             if (trade != null)
-                return trade.getProfitLoss();
+                return applyWeight(trade.getProfitLoss(), getTradeWeight(element));
             TradeTotals totals = asTotals(element);
             if (totals != null)
                 return totals.getTotalProfitLoss();
@@ -566,7 +600,7 @@ public class TradesTableViewer
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
-                return trade.getProfitLoss();
+                return applyWeight(trade.getProfitLoss(), getTradeWeight(e));
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getTotalProfitLoss();
@@ -581,7 +615,7 @@ public class TradesTableViewer
         column.setLabelProvider(new MoneyColorLabelProvider(element -> {
             Trade trade = asTrade(element);
             if (trade != null)
-                return trade.getProfitLossWithoutTaxesAndFees();
+                return applyWeight(trade.getProfitLossWithoutTaxesAndFees(), getTradeWeight(element));
             TradeTotals totals = asTotals(element);
             if (totals != null)
                 return totals.getTotalProfitLossWithoutTaxesAndFees();
@@ -591,7 +625,7 @@ public class TradesTableViewer
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
-                return trade.getProfitLossWithoutTaxesAndFees();
+                return applyWeight(trade.getProfitLossWithoutTaxesAndFees(), getTradeWeight(e));
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getTotalProfitLossWithoutTaxesAndFees();
@@ -609,7 +643,7 @@ public class TradesTableViewer
         column.setLabelProvider(new MoneyColorLabelProvider(element -> {
             Trade trade = asTrade(element);
             if (trade != null)
-                return trade.getProfitLossMovingAverage();
+                return applyWeight(trade.getProfitLossMovingAverage(), getTradeWeight(element));
             TradeTotals totals = asTotals(element);
             if (totals != null)
                 return totals.getTotalProfitLossMovingAverage();
@@ -619,7 +653,7 @@ public class TradesTableViewer
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
-                return trade.getProfitLossMovingAverage();
+                return applyWeight(trade.getProfitLossMovingAverage(), getTradeWeight(e));
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getTotalProfitLossMovingAverage();
@@ -637,7 +671,7 @@ public class TradesTableViewer
         column.setLabelProvider(new MoneyColorLabelProvider(element -> {
             Trade trade = asTrade(element);
             if (trade != null)
-                return trade.getProfitLossMovingAverageWithoutTaxesAndFees();
+                return applyWeight(trade.getProfitLossMovingAverageWithoutTaxesAndFees(), getTradeWeight(element));
             TradeTotals totals = asTotals(element);
             if (totals != null)
                 return totals.getTotalProfitLossMovingAverageWithoutTaxesAndFees();
@@ -647,7 +681,7 @@ public class TradesTableViewer
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
-                return trade.getProfitLossMovingAverageWithoutTaxesAndFees();
+                return applyWeight(trade.getProfitLossMovingAverageWithoutTaxesAndFees(), getTradeWeight(e));
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getTotalProfitLossMovingAverageWithoutTaxesAndFees();
@@ -727,7 +761,7 @@ public class TradesTableViewer
         column.setLabelProvider(new NumberColorLabelProvider<>(Values.Percent2, element -> {
             Trade trade = asTrade(element);
             if (trade != null)
-                return trade.getReturn();
+                return applyWeight(trade.getReturn(), getTradeWeight(element));
             TradeTotals totals = asTotals(element);
             if (totals != null)
                 return totals.getAverageReturn();
@@ -737,7 +771,7 @@ public class TradesTableViewer
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
-                return trade.getReturn();
+                return applyWeight(trade.getReturn(), getTradeWeight(e));
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getAverageReturn();
@@ -755,7 +789,7 @@ public class TradesTableViewer
         column.setLabelProvider(new NumberColorLabelProvider<>(Values.Percent2, element -> {
             Trade trade = asTrade(element);
             if (trade != null)
-                return trade.getReturnMovingAverage();
+                return applyWeight(trade.getReturnMovingAverage(), getTradeWeight(element));
             TradeTotals totals = asTotals(element);
             if (totals != null)
                 return totals.getAverageReturnMovingAverage();
@@ -765,7 +799,7 @@ public class TradesTableViewer
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
-                return trade.getReturnMovingAverage();
+                return applyWeight(trade.getReturnMovingAverage(), getTradeWeight(e));
             TradeTotals totals = asTotals(e);
             if (totals != null)
                 return totals.getAverageReturnMovingAverage();

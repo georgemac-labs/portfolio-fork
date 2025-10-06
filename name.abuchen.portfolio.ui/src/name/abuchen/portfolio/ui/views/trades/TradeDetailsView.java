@@ -37,6 +37,7 @@ import name.abuchen.portfolio.money.CurrencyConverterImpl;
 import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.snapshot.trades.Trade;
 import name.abuchen.portfolio.snapshot.trades.TradeCategory;
+import name.abuchen.portfolio.snapshot.trades.TradeCategory.TradeAssignment;
 import name.abuchen.portfolio.snapshot.trades.TradeCollector;
 import name.abuchen.portfolio.snapshot.trades.TradeCollectorException;
 import name.abuchen.portfolio.snapshot.trades.TradeTotals;
@@ -679,9 +680,9 @@ public class TradeDetailsView extends AbstractFinanceView
 
             // Add all trades in this category with the SAME sortOrder
             // This keeps them grouped together during sorting
-            for (Trade trade : category.getTrades())
+            for (TradeAssignment assignment : category.getTradeAssignments())
             {
-                elements.add(new TradeElement(trade, sortOrder));
+                elements.add(new TradeElement(assignment.getTrade(), sortOrder, assignment.getWeight()));
             }
 
             // Increment sortOrder for next category

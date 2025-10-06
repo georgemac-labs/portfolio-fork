@@ -28,6 +28,28 @@ public class TradeCategory
         }
     }
 
+    public static final class TradeAssignment
+    {
+        private final Trade trade;
+        private final double weight;
+
+        private TradeAssignment(Trade trade, double weight)
+        {
+            this.trade = trade;
+            this.weight = weight;
+        }
+
+        public Trade getTrade()
+        {
+            return trade;
+        }
+
+        public double getWeight()
+        {
+            return weight;
+        }
+    }
+
     private static final class WeightedTrade
     {
         private final Trade trade;
@@ -115,6 +137,13 @@ public class TradeCategory
     public List<Trade> getTrades()
     {
         return weightedTrades.stream().map(wt -> wt.trade).distinct().collect(Collectors.toList());
+    }
+
+    public List<TradeAssignment> getTradeAssignments()
+    {
+        return weightedTrades.stream() //
+                        .map(wt -> new TradeAssignment(wt.trade, wt.weight)) //
+                        .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
     }
 
     public long getTradeCount()
