@@ -98,6 +98,8 @@ public class TradesTableViewer
     {
         if (money == null || Double.compare(weight, 1.0) == 0)
             return money;
+        // TradeElements representing grouped trades expose a fractional weight;
+        // scale the monetary value so category rows show weighted totals.
         return money.multiplyAndRound(weight);
     }
 
@@ -407,6 +409,9 @@ public class TradesTableViewer
                     Trade trade = asTrade(e);
                     if (trade != null)
                     {
+                        // Category group rows inject trades with a weight so
+                        // their contribution to the entry value reflects the
+                        // group's aggregation instead of the raw trade amount.
                         Money value = applyWeight(trade.getEntryValue(), getTradeWeight(e));
                         return Values.Money.format(value, view.getClient().getBaseCurrency());
                     }
@@ -945,6 +950,9 @@ public class TradesTableViewer
             if (a != b)
             {
                 int direction = ColumnViewerSorter.SortingContext.getSortDirection();
+                // The viewer applies the comparator in both ascending and
+                // descending order; respect that by flipping the taxonomy
+                // order comparison when descending is requested.
                 return direction == SWT.UP ? a - b : b - a;
             }
 
