@@ -22,11 +22,10 @@ This feature adds support for grouping and analyzing completed trades by taxonom
 
 ### Internationalization ✅
 **Files Modified**:
-- `name.abuchen.portfolio/src/name/abuchen/portfolio/Messages.java`
-- `name.abuchen.portfolio/src/name/abuchen/portfolio/messages.properties`
+- `name.abuchen.portfolio.ui/src/name/abuchen/portfolio/ui/Messages.java`
+- `name.abuchen.portfolio.ui/src/name/abuchen/portfolio/ui/messages*.properties`
 
 **Added Strings**:
-- `LabelTaxonomies` = Taxonomies
 - `LabelTradesByTaxonomy` = Trades by Taxonomy
 
 ### Unit Tests ✅
