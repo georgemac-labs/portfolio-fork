@@ -77,6 +77,7 @@ public class TradeCategory
     }
 
     private final Classification classification;
+    private final Classification taxonomyClassification;
     private final CurrencyConverter converter;
     private final List<WeightedTrade> weightedTrades = new ArrayList<>();
 
@@ -98,6 +99,7 @@ public class TradeCategory
     /* package */ TradeCategory(Classification classification, CurrencyConverter converter)
     {
         this.classification = classification;
+        this.taxonomyClassification = classification;
         this.converter = converter;
     }
 
@@ -117,6 +119,7 @@ public class TradeCategory
     /* package */ TradeCategory(Classification classification, CurrencyConverter converter, String currencyCode)
     {
         this.converter = converter.with(currencyCode);
+        this.taxonomyClassification = classification;
         this.classification = new Classification(classification.getParent(), //
                         classification.getId(), //
                         classification.getName() + " (" + currencyCode + ")"); //$NON-NLS-1$
@@ -126,6 +129,11 @@ public class TradeCategory
     public Classification getClassification()
     {
         return classification;
+    }
+
+    public Classification getTaxonomyClassification()
+    {
+        return taxonomyClassification;
     }
 
     /* package */ void addTrade(Trade trade, double weight)

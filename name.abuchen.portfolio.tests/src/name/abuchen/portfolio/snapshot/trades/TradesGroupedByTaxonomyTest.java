@@ -367,6 +367,10 @@ public class TradesGroupedByTaxonomyTest
 
         TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
 
+        TradeCategory equitiesCategory = grouped.byClassification(equities);
+        assertThat(equitiesCategory, notNullValue());
+        assertThat(equitiesCategory.getTaxonomyClassification(), is(equities));
+
         Money expectedTotal = trades.stream() //
                         .map(trade -> {
                             LocalDate date = trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());

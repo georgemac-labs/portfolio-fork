@@ -202,7 +202,7 @@ public class TradesGroupedByTaxonomy
     {
         for (TradeCategory category : categories)
         {
-            if (category.getClassification().equals(classification))
+            if (category.getTaxonomyClassification() == classification)
                 return category;
         }
 
