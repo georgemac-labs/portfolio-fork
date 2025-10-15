@@ -44,6 +44,7 @@ import name.abuchen.portfolio.ui.util.viewers.SharesLabelProvider;
 import name.abuchen.portfolio.ui.util.viewers.ShowHideColumnHelper;
 import name.abuchen.portfolio.ui.util.viewers.ToolTipCustomProviderSupport;
 import name.abuchen.portfolio.ui.views.columns.IsinColumn;
+import name.abuchen.portfolio.ui.views.columns.NameColumn;
 import name.abuchen.portfolio.ui.views.columns.SymbolColumn;
 import name.abuchen.portfolio.ui.views.columns.WknColumn;
 import name.abuchen.portfolio.ui.views.trades.TradeElement;
@@ -211,7 +212,7 @@ public class TradesTableViewer
             // Custom name column that handles both trades (showing security
             // name)
             // and categories (showing classification name in bold)
-            column = new Column("name", Messages.ColumnName, SWT.LEFT, 300); //$NON-NLS-1$
+            column = new NameColumn(view.getClient());
             column.setLabelProvider(new ColumnLabelProvider()
             {
                 @Override
