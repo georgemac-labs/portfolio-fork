@@ -101,13 +101,6 @@ public class TradesTableViewer
         return money.multiplyAndRound(weight);
     }
 
-    private static Double applyWeight(double value, double weight)
-    {
-        if (Double.isNaN(value) || Double.compare(weight, 1.0) == 0)
-            return value;
-        return value * weight;
-    }
-
     /**
      * Helper method to check if an element is a category row
      */
@@ -129,6 +122,34 @@ public class TradesTableViewer
             return te.isCategory() ? te.getCategory() : null;
         }
         return null;
+    }
+
+    static Double getReturnValue(Object element)
+    {
+        Trade trade = asTrade(element);
+        if (trade != null)
+            return trade.getReturn();
+
+        TradeTotals totals = asTotals(element);
+        if (totals != null)
+            return totals.getAverageReturn();
+
+        TradeCategory category = asCategory(element);
+        return category != null ? category.getAverageReturn() : null;
+    }
+
+    static Double getReturnMovingAverageValue(Object element)
+    {
+        Trade trade = asTrade(element);
+        if (trade != null)
+            return trade.getReturnMovingAverage();
+
+        TradeTotals totals = asTotals(element);
+        if (totals != null)
+            return totals.getAverageReturnMovingAverage();
+
+        TradeCategory category = asCategory(element);
+        return category != null ? category.getAverageReturnMovingAverage() : null;
     }
 
     /**
@@ -759,24 +780,10 @@ public class TradesTableViewer
         column.setGroupLabel(Messages.ColumnReturn);
         column.setMenuLabel(Messages.ColumnReturn + " (" + CostMethod.FIFO.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         column.setLabelProvider(new NumberColorLabelProvider<>(Values.Percent2, element -> {
-            Trade trade = asTrade(element);
-            if (trade != null)
-                return applyWeight(trade.getReturn(), getTradeWeight(element));
-            TradeTotals totals = asTotals(element);
-            if (totals != null)
-                return totals.getAverageReturn();
-            TradeCategory category = asCategory(element);
-            return category != null ? category.getAverageReturn() : null;
+            return getReturnValue(element);
         }));
         column.setSorter(ColumnViewerSorter.create(e -> {
-            Trade trade = asTrade(e);
-            if (trade != null)
-                return applyWeight(trade.getReturn(), getTradeWeight(e));
-            TradeTotals totals = asTotals(e);
-            if (totals != null)
-                return totals.getAverageReturn();
-            TradeCategory category = asCategory(e);
-            return category != null ? category.getAverageReturn() : null;
+            return getReturnValue(e);
         }));
         column.setVisible(false);
         support.addColumn(column);
@@ -787,24 +794,10 @@ public class TradesTableViewer
         column.setGroupLabel(Messages.ColumnReturn);
         column.setMenuLabel(Messages.ColumnReturn + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         column.setLabelProvider(new NumberColorLabelProvider<>(Values.Percent2, element -> {
-            Trade trade = asTrade(element);
-            if (trade != null)
-                return applyWeight(trade.getReturnMovingAverage(), getTradeWeight(element));
-            TradeTotals totals = asTotals(element);
-            if (totals != null)
-                return totals.getAverageReturnMovingAverage();
-            TradeCategory category = asCategory(element);
-            return category != null ? category.getAverageReturnMovingAverage() : null;
+            return getReturnMovingAverageValue(element);
         }));
         column.setSorter(ColumnViewerSorter.create(e -> {
-            Trade trade = asTrade(e);
-            if (trade != null)
-                return applyWeight(trade.getReturnMovingAverage(), getTradeWeight(e));
-            TradeTotals totals = asTotals(e);
-            if (totals != null)
-                return totals.getAverageReturnMovingAverage();
-            TradeCategory category = asCategory(e);
-            return category != null ? category.getAverageReturnMovingAverage() : null;
+            return getReturnMovingAverageValue(e);
         }));
         column.setVisible(false);
         support.addColumn(column);
