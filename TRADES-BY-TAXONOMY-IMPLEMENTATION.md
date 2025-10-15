@@ -26,11 +26,6 @@ This feature adds support for grouping and analyzing completed trades by taxonom
 - `name.abuchen.portfolio/src/name/abuchen/portfolio/messages.properties`
 
 **Added Strings**:
-- `ColumnAverageIRR` = Avg IRR
-- `ColumnAverageReturn` = Avg Return
-- `ColumnTotalProfitLoss` = Total P/L
-- `ColumnTradeCount` = Trades
-- `ColumnWinRate` = Win Rate
 - `LabelTaxonomies` = Taxonomies
 - `LabelTradesByTaxonomy` = Trades by Taxonomy
 
