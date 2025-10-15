@@ -210,6 +210,7 @@ public class Messages extends NLS
     public static String LabelStatementOfAssets;
     public static String LabelSuffixEntryCorrected;
     public static String LabelSum;
+    public static String LabelTaxonomies;
     public static String LabelTradeCalendarASX;
     public static String LabelTradeCalendarDefault;
     public static String LabelTradeCalendarEmpty;
@@ -228,6 +229,7 @@ public class Messages extends NLS
     public static String LabelTradeCalendarTSX;
     public static String LabelTradeCalendarUseDefault;
     public static String LabelTradeCalendarVSE;
+    public static String LabelTradesByTaxonomy;
     public static String LabelTrailTransferFromXtoY;
     public static String LabelTrailWithoutTaxesAndFees;
     public static String LabelTrailXofYShares;
