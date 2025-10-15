@@ -1,8 +1,12 @@
 package name.abuchen.portfolio.ui.views.trades;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 import name.abuchen.portfolio.model.Adaptable;
 import name.abuchen.portfolio.model.Adaptor;
 import name.abuchen.portfolio.model.Classification;
+import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.trades.Trade;
 import name.abuchen.portfolio.snapshot.trades.TradeCategory;
 import name.abuchen.portfolio.snapshot.trades.TradeTotals;
@@ -99,6 +103,24 @@ public class TradeElement implements Adaptable
     public double getWeight()
     {
         return weight;
+    }
+
+    /**
+     * Returns the trade's shares scaled by the taxonomy weight, rounding to the
+     * nearest share unit using the same HALF_DOWN strategy as
+     * {@link name.abuchen.portfolio.snapshot.SecurityPosition#split}.
+     */
+    public Long getWeightedShares()
+    {
+        if (!isTrade())
+            return null;
+
+        if (Double.compare(weight, 1.0) == 0)
+            return trade.getShares();
+
+        BigDecimal shares = BigDecimal.valueOf(trade.getShares());
+        BigDecimal weighted = shares.multiply(BigDecimal.valueOf(weight), Values.MC);
+        return weighted.setScale(0, RoundingMode.HALF_DOWN).longValue();
     }
 
     @Override

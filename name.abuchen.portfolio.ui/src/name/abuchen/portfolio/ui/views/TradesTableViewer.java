@@ -386,14 +386,22 @@ public class TradesTableViewer
             {
                 Trade trade = asTrade(e);
                 if (trade != null)
+                {
+                    if (e instanceof TradeElement te)
+                        return te.getWeightedShares();
                     return trade.getShares();
+                }
                 return null;
             }
         });
         column.setSorter(ColumnViewerSorter.create(e -> {
             Trade trade = asTrade(e);
             if (trade != null)
+            {
+                if (e instanceof TradeElement te)
+                    return te.getWeightedShares();
                 return trade.getShares();
+            }
             return null;
         }));
         support.addColumn(column);
