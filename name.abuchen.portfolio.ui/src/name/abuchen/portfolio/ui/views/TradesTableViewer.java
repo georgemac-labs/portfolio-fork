@@ -258,6 +258,7 @@ public class TradesTableViewer
                 TradeCategory category = asCategory(e);
                 return category != null ? category.getClassification().getName() : ""; //$NON-NLS-1$
             }));
+            column.getEditingSupport().addListener(new TouchClientListener(view.getClient()));
             support.addColumn(column);
         }
 
