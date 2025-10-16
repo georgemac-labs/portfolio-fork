@@ -7,6 +7,7 @@ import static org.hamcrest.number.IsCloseTo.closeTo;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.Test;
 
@@ -22,6 +23,9 @@ import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.trades.Trade;
 import name.abuchen.portfolio.snapshot.trades.TradeCollector;
 import name.abuchen.portfolio.ui.views.trades.TradeElement;
+import name.abuchen.portfolio.ui.util.viewers.Column;
+import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.TouchClientListener;
+import name.abuchen.portfolio.ui.views.columns.NameColumn;
 
 @SuppressWarnings("nls")
 public class TradesTableViewerTest
@@ -97,5 +101,41 @@ public class TradesTableViewerTest
 
         assertThat(element.getWeightedShares(), is(expectedWeightedShares));
         assertThat(new TradeElement(trade, 0, 1.0).getWeightedShares(), is(trade.getShares()));
+    }
+
+    @Test
+    public void renamingSecurityTouchesClient() throws Exception
+    {
+        Client client = new Client();
+
+        Security security = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-02-01", Values.Quote.factorize(110)) //
+                        .addTo(client);
+        security.setName("Original");
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2020-01-01", Values.Amount.factorize(20000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(security, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(security, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .addTo(client);
+
+        TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
+        Trade trade = collector.collect(security).get(0);
+
+        AtomicBoolean touched = new AtomicBoolean(false);
+        client.addPropertyChangeListener("touch", event -> touched.set(true));
+
+        Column column = new NameColumn(client);
+        column.getEditingSupport().addListener(new TouchClientListener(client));
+
+        column.getEditingSupport().setValue(trade, "Renamed Security");
+
+        assertThat(security.getName(), is("Renamed Security"));
+        assertThat(client.getSecurities().get(0).getName(), is("Renamed Security"));
+        assertThat(touched.get(), is(true));
     }
 }
