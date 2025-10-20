@@ -1,6 +1,8 @@
 package name.abuchen.portfolio.ui.jobs.priceupdate;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -17,12 +19,23 @@ public class PriceUpdateSnapshot
     public PriceUpdateSnapshot(long timestamp, Map<Security, SecurityUpdateStatus> statuses)
     {
         this.timestamp = timestamp;
-        this.statuses = statuses;
+
+        Map<Security, SecurityUpdateStatus> snapshotStatuses = new HashMap<>(statuses.size());
+
+        for (var entry : statuses.entrySet())
+        {
+            var status = entry.getValue();
+            var historicCopy = copyOf(status.getHistoricStatus());
+            var latestCopy = copyOf(status.getLatestStatus());
+            snapshotStatuses.put(entry.getKey(), new SecurityUpdateStatus(entry.getKey(), historicCopy, latestCopy));
+        }
+
+        this.statuses = Collections.unmodifiableMap(snapshotStatuses);
 
         var count = 0;
         var completed = 0;
 
-        for (var status : statuses.values())
+        for (var status : snapshotStatuses.values())
         {
             var statusesToCheck = new FeedUpdateStatus[] { status.getHistoricStatus(), status.getLatestStatus() };
 
@@ -39,6 +52,13 @@ public class PriceUpdateSnapshot
 
         this.taskCount = count;
         this.completedTaskCount = completed;
+    }
+
+    private static FeedUpdateStatus copyOf(FeedUpdateStatus status)
+    {
+        var copy = new FeedUpdateStatus(status.getStatus());
+        copy.setStatus(status.getStatus(), status.getMessage());
+        return copy;
     }
 
     public long getTimestamp()

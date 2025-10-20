@@ -4,12 +4,15 @@ import java.text.MessageFormat;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -45,6 +48,7 @@ import name.abuchen.portfolio.ui.Messages;
 import name.abuchen.portfolio.ui.UIConstants;
 import name.abuchen.portfolio.ui.editor.AbstractFinanceView;
 import name.abuchen.portfolio.ui.handlers.UpdateQuotesHandler;
+import name.abuchen.portfolio.ui.jobs.priceupdate.FeedUpdateStatus;
 import name.abuchen.portfolio.ui.jobs.priceupdate.PriceUpdateProgress;
 import name.abuchen.portfolio.ui.jobs.priceupdate.PriceUpdateSnapshot;
 import name.abuchen.portfolio.ui.jobs.priceupdate.UpdatePricesJob;
@@ -127,6 +131,8 @@ public class SecurityPriceUpdateView extends AbstractFinanceView implements Pric
         getEditorActivationState().deferUntilNotEditing(() -> {
             var isNewRequest = this.timestamp != status.getTimestamp();
 
+            var previous = this.statuses;
+
             this.timestamp = status.getTimestamp();
             this.statuses = status;
 
@@ -143,10 +149,44 @@ public class SecurityPriceUpdateView extends AbstractFinanceView implements Pric
                 }
                 else
                 {
-                    securities.refresh(true);
+                    var changedSecurities = findChangedSecurities(previous, status);
+
+                    for (var security : changedSecurities)
+                    {
+                        securities.refresh(security, true);
+                    }
                 }
             }
         });
+    }
+
+    private List<Security> findChangedSecurities(PriceUpdateSnapshot previous, PriceUpdateSnapshot current)
+    {
+        var changed = new ArrayList<Security>();
+
+        for (var security : current.getSecurities())
+        {
+            var historicChanged = !areEqual(previous.getHistoricStatus(security), current.getHistoricStatus(security));
+            var latestChanged = !areEqual(previous.getLatestStatus(security), current.getLatestStatus(security));
+
+            if (historicChanged || latestChanged)
+                changed.add(security);
+        }
+
+        return changed;
+    }
+
+    private boolean areEqual(Optional<FeedUpdateStatus> previous, Optional<FeedUpdateStatus> current)
+    {
+        if (previous.isEmpty() && current.isEmpty())
+            return true;
+        if (previous.isEmpty() || current.isEmpty())
+            return false;
+
+        var left = previous.get();
+        var right = current.get();
+
+        return left.getStatus() == right.getStatus() && Objects.equals(left.getMessage(), right.getMessage());
     }
 
     @Override
