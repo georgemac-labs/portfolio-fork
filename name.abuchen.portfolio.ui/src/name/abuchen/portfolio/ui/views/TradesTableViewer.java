@@ -7,15 +7,24 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import org.eclipse.jface.layout.TableColumnLayout;
+import org.eclipse.jface.resource.FontDescriptor;
+import org.eclipse.jface.resource.JFaceResources;
+import org.eclipse.jface.resource.LocalResourceManager;
 import org.eclipse.jface.viewers.ArrayContentProvider;
 import org.eclipse.jface.viewers.ColumnLabelProvider;
+import org.eclipse.jface.viewers.ColumnViewer;
 import org.eclipse.jface.viewers.TableViewer;
+import org.eclipse.jface.viewers.ViewerCell;
+import org.eclipse.jface.viewers.ViewerColumn;
 import org.eclipse.jface.window.ToolTip;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Event;
 
 import name.abuchen.portfolio.model.CostMethod;
 import name.abuchen.portfolio.model.Named;
@@ -61,6 +70,8 @@ public class TradesTableViewer
 
     private TableViewer trades;
     private ShowHideColumnHelper support;
+    private LocalResourceManager resources;
+    private Font boldFont;
 
     public TradesTableViewer(AbstractFinanceView view)
     {
@@ -185,6 +196,18 @@ public class TradesTableViewer
         container.setLayout(layout);
 
         trades = new TableViewer(container, SWT.FULL_SELECTION);
+        view.getStylingEngine().style(trades.getTable());
+
+        resources = new LocalResourceManager(JFaceResources.getResources(), trades.getTable());
+        boldFont = resources.create(FontDescriptor.createFrom(trades.getTable().getFont()).setStyle(SWT.BOLD));
+        trades.getTable().addDisposeListener(e -> {
+            if (resources != null)
+            {
+                resources.dispose();
+                resources = null;
+                boldFont = null;
+            }
+        });
 
         ColumnEditingSupport.prepare(view.getEditorActivationState(), trades);
         ToolTipCustomProviderSupport.enableFor(trades, ToolTip.NO_RECREATE);
@@ -213,7 +236,7 @@ public class TradesTableViewer
             // name)
             // and categories (showing classification name in bold)
             column = new NameColumn(view.getClient());
-            column.setLabelProvider(new ColumnLabelProvider()
+            column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
             {
                 @Override
                 public String getText(Object e)
@@ -234,13 +257,6 @@ public class TradesTableViewer
                 }
 
                 @Override
-                public org.eclipse.swt.graphics.Font getFont(Object e)
-                {
-                    return isCategory(e) || isTotal(e) ? org.eclipse.jface.resource.JFaceResources.getFontRegistry()
-                                    .getBold(org.eclipse.jface.resource.JFaceResources.DEFAULT_FONT) : null;
-                }
-
-                @Override
                 public Image getImage(Object e)
                 {
                     Trade trade = asTrade(e);
@@ -248,7 +264,7 @@ public class TradesTableViewer
                         return Images.SECURITY.image();
                     return null;
                 }
-            });
+            }));
             column.setSorter(ColumnViewerSorter.create(e -> {
                 Trade trade = asTrade(e);
                 if (trade != null)
@@ -263,7 +279,7 @@ public class TradesTableViewer
         }
 
         column = new Column("start", Messages.ColumnStartDate, SWT.None, 80); //$NON-NLS-1$
-        column.setLabelProvider(new DateTimeLabelProvider(e -> {
+        column.setLabelProvider(withBoldFont(new DateTimeLabelProvider(e -> {
             Trade trade = asTrade(e);
             return trade != null ? trade.getStart() : null;
         }));
@@ -274,7 +290,7 @@ public class TradesTableViewer
         support.addColumn(column);
 
         column = new Column("end", Messages.ColumnEndDate, SWT.None, 80); //$NON-NLS-1$
-        column.setLabelProvider(new DateTimeLabelProvider(e -> {
+        column.setLabelProvider(withBoldFont(new DateTimeLabelProvider(e -> {
             Trade trade = asTrade(e);
             return trade != null ? trade.getEnd().orElse(null) : null;
         }, Messages.LabelOpenTrade)
@@ -308,7 +324,7 @@ public class TradesTableViewer
         support.addColumn(column);
 
         column = new Column("tx", Messages.ColumnNumberOfTransactions, SWT.RIGHT, 80); //$NON-NLS-1$
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
             public String getText(Object e)
@@ -384,6 +400,26 @@ public class TradesTableViewer
         column.setLabelProvider(new SharesLabelProvider() // NOSONAR
         {
             @Override
+            protected void measure(Event event, Object element)
+            {
+                Font previous = event.gc.getFont();
+                if (boldFont != null && (isCategory(element) || isTotal(element)))
+                    event.gc.setFont(boldFont);
+                super.measure(event, element);
+                event.gc.setFont(previous);
+            }
+
+            @Override
+            protected void paint(Event event, Object element)
+            {
+                Font previous = event.gc.getFont();
+                if (boldFont != null && (isCategory(element) || isTotal(element)))
+                    event.gc.setFont(boldFont);
+                super.paint(event, element);
+                event.gc.setFont(previous);
+            }
+
+            @Override
             public Long getValue(Object e)
             {
                 Trade trade = asTrade(e);
@@ -411,7 +447,7 @@ public class TradesTableViewer
         column = new Column("entryvalue", Messages.ColumnEntryValue, SWT.RIGHT, 80); //$NON-NLS-1$
         column.setGroupLabel(Messages.ColumnEntryValue);
         column.setMenuLabel(Messages.ColumnEntryValue + " (" + CostMethod.FIFO.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
                 public String getText(Object e)
@@ -453,7 +489,7 @@ public class TradesTableViewer
                         SWT.RIGHT, 80);
         column.setGroupLabel(Messages.ColumnEntryValue);
         column.setMenuLabel(Messages.ColumnEntryValue + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
             public String getText(Object e)
@@ -501,7 +537,7 @@ public class TradesTableViewer
         column.setGroupLabel(Messages.ColumnEntryValue);
         column.setMenuLabel(Messages.ColumnEntryValue + " (" + Messages.ColumnPerShare + ")" + " (" //$NON-NLS-1$ //$NON-NLS-2$//$NON-NLS-3$
                         + CostMethod.FIFO.getLabel() + ")"); //$NON-NLS-1$
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
             public String getText(Object e)
@@ -534,7 +570,7 @@ public class TradesTableViewer
         column.setGroupLabel(Messages.ColumnEntryValue);
         column.setMenuLabel(Messages.ColumnEntryValue + " (" + Messages.ColumnPerShare + ")" + " (" //$NON-NLS-1$ //$NON-NLS-2$//$NON-NLS-3$
                         + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
             public String getText(Object e)
@@ -557,7 +593,7 @@ public class TradesTableViewer
 
         column = new Column("exitvalue", Messages.ColumnExitValue, SWT.RIGHT, 80); //$NON-NLS-1$
         column.setGroupLabel(Messages.ColumnExitValue);
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
                 public String getText(Object e)
@@ -600,7 +636,7 @@ public class TradesTableViewer
         column = new Column("exitvalue-pershare", Messages.ColumnExitValue + " (" + Messages.ColumnPerShare + ")", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
                         SWT.RIGHT, 80);
         column.setGroupLabel(Messages.ColumnExitValue);
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
             public String getText(Object e)
@@ -623,7 +659,7 @@ public class TradesTableViewer
         column = new Column("pl", Messages.ColumnProfitLoss, SWT.RIGHT, 80); //$NON-NLS-1$
         column.setGroupLabel(Messages.ColumnProfitLoss);
         column.setMenuLabel(Messages.ColumnProfitLoss + " (" + CostMethod.FIFO.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
-        column.setLabelProvider(new MoneyColorLabelProvider(element -> {
+        column.setLabelProvider(withBoldFont(new MoneyColorLabelProvider(element -> {
             Trade trade = asTrade(element);
             if (trade != null)
                 return applyWeight(trade.getProfitLoss(), getTradeWeight(element));
@@ -648,7 +684,7 @@ public class TradesTableViewer
         column = new Column("gpl", Messages.ColumnGrossProfitLoss, SWT.RIGHT, 80); //$NON-NLS-1$
         column.setGroupLabel(Messages.ColumnProfitLoss);
         column.setMenuLabel(Messages.ColumnGrossProfitLoss + " (" + CostMethod.FIFO.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
-        column.setLabelProvider(new MoneyColorLabelProvider(element -> {
+        column.setLabelProvider(withBoldFont(new MoneyColorLabelProvider(element -> {
             Trade trade = asTrade(element);
             if (trade != null)
                 return applyWeight(trade.getProfitLossWithoutTaxesAndFees(), getTradeWeight(element));
@@ -676,7 +712,7 @@ public class TradesTableViewer
                         SWT.RIGHT, 80);
         column.setGroupLabel(Messages.ColumnProfitLoss);
         column.setMenuLabel(Messages.ColumnProfitLoss + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
-        column.setLabelProvider(new MoneyColorLabelProvider(element -> {
+        column.setLabelProvider(withBoldFont(new MoneyColorLabelProvider(element -> {
             Trade trade = asTrade(element);
             if (trade != null)
                 return applyWeight(trade.getProfitLossMovingAverage(), getTradeWeight(element));
@@ -704,7 +740,7 @@ public class TradesTableViewer
                         SWT.RIGHT, 80);
         column.setGroupLabel(Messages.ColumnProfitLoss);
         column.setMenuLabel(Messages.ColumnGrossProfitLoss + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
-        column.setLabelProvider(new MoneyColorLabelProvider(element -> {
+        column.setLabelProvider(withBoldFont(new MoneyColorLabelProvider(element -> {
             Trade trade = asTrade(element);
             if (trade != null)
                 return applyWeight(trade.getProfitLossMovingAverageWithoutTaxesAndFees(), getTradeWeight(element));
@@ -728,7 +764,7 @@ public class TradesTableViewer
         support.addColumn(column);
 
         column = new Column("holdingperiod", Messages.ColumnHoldingPeriod, SWT.RIGHT, 80); //$NON-NLS-1$
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
             public String getText(Object e)
@@ -756,7 +792,7 @@ public class TradesTableViewer
         support.addColumn(column);
 
         column = new Column("latesttrade", Messages.ColumnLatestTrade, SWT.None, 80); //$NON-NLS-1$
-        column.setLabelProvider(new DateTimeLabelProvider(e -> {
+        column.setLabelProvider(withBoldFont(new DateTimeLabelProvider(e -> {
             Trade trade = asTrade(e);
             return trade != null ? trade.getLastTransaction().getTransaction().getDateTime() : null;
         }));
@@ -769,7 +805,7 @@ public class TradesTableViewer
 
         column = new Column("irr", Messages.ColumnIRR, SWT.RIGHT, 80); //$NON-NLS-1$
         column.setMenuLabel(Messages.ColumnIRR_MenuLabel);
-        column.setLabelProvider(new NumberColorLabelProvider<>(Values.Percent2, element -> {
+        column.setLabelProvider(withBoldFont(new NumberColorLabelProvider<>(Values.Percent2, element -> {
             Trade trade = asTrade(element);
             if (trade != null)
                 return trade.getIRR();
@@ -794,7 +830,7 @@ public class TradesTableViewer
         column = new Column("return", Messages.ColumnReturn, SWT.RIGHT, 80); //$NON-NLS-1$
         column.setGroupLabel(Messages.ColumnReturn);
         column.setMenuLabel(Messages.ColumnReturn + " (" + CostMethod.FIFO.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
-        column.setLabelProvider(new NumberColorLabelProvider<>(Values.Percent2, element -> {
+        column.setLabelProvider(withBoldFont(new NumberColorLabelProvider<>(Values.Percent2, element -> {
             return getReturnValue(element);
         }));
         column.setSorter(ColumnViewerSorter.create(e -> {
@@ -808,7 +844,7 @@ public class TradesTableViewer
                         SWT.RIGHT, 80);
         column.setGroupLabel(Messages.ColumnReturn);
         column.setMenuLabel(Messages.ColumnReturn + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
-        column.setLabelProvider(new NumberColorLabelProvider<>(Values.Percent2, element -> {
+        column.setLabelProvider(withBoldFont(new NumberColorLabelProvider<>(Values.Percent2, element -> {
             return getReturnMovingAverageValue(element);
         }));
         column.setSorter(ColumnViewerSorter.create(e -> {
@@ -818,7 +854,7 @@ public class TradesTableViewer
         support.addColumn(column);
 
         column = new Column("note", Messages.ColumnNote, SWT.LEFT, 80); //$NON-NLS-1$
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             private String getRawText(Object e)
             {
@@ -855,7 +891,7 @@ public class TradesTableViewer
 
         column = new Column("portfolio", Messages.ColumnPortfolio, SWT.LEFT, 100); //$NON-NLS-1$
         column.setMenuLabel(Messages.ColumnPortfolio);
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
             public String getText(Object e)
@@ -891,7 +927,7 @@ public class TradesTableViewer
 
         column = new Column("instrumentCurrency", Messages.ColumnCurrency, SWT.LEFT, 80); //$NON-NLS-1$
         column.setGroupLabel(Messages.ColumnSecurity);
-        column.setLabelProvider(new ColumnLabelProvider()
+        column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
             public String getText(Object element)
@@ -913,6 +949,125 @@ public class TradesTableViewer
             if (col.getSorter() != null)
                 col.getSorter().wrap(TradeElementComparator::new);
         });
+    }
+
+    private ColumnLabelProvider withBoldFont(ColumnLabelProvider delegate)
+    {
+        return new ColumnLabelProvider()
+        {
+            @Override
+            public void initialize(ColumnViewer viewer, ViewerColumn column)
+            {
+                super.initialize(viewer, column);
+                delegate.initialize(viewer, column);
+            }
+
+            @Override
+            public void update(ViewerCell cell)
+            {
+                delegate.update(cell);
+
+                Object element = cell.getElement();
+                Font font = delegate.getFont(element);
+                if (isCategory(element) || isTotal(element))
+                    cell.setFont(boldFont != null ? boldFont : font);
+                else
+                    cell.setFont(font);
+            }
+
+            @Override
+            public String getText(Object element)
+            {
+                return delegate.getText(element);
+            }
+
+            @Override
+            public Image getImage(Object element)
+            {
+                return delegate.getImage(element);
+            }
+
+            @Override
+            public Color getForeground(Object element)
+            {
+                return delegate.getForeground(element);
+            }
+
+            @Override
+            public Color getBackground(Object element)
+            {
+                return delegate.getBackground(element);
+            }
+
+            @Override
+            public String getToolTipText(Object element)
+            {
+                return delegate.getToolTipText(element);
+            }
+
+            @Override
+            public Point getToolTipShift(Object object)
+            {
+                return delegate.getToolTipShift(object);
+            }
+
+            @Override
+            public int getToolTipDisplayDelayTime(Object object)
+            {
+                return delegate.getToolTipDisplayDelayTime(object);
+            }
+
+            @Override
+            public int getToolTipTimeDisplayed(Object object)
+            {
+                return delegate.getToolTipTimeDisplayed(object);
+            }
+
+            @Override
+            public boolean useNativeToolTip(Object object)
+            {
+                return delegate.useNativeToolTip(object);
+            }
+
+            @Override
+            public Color getToolTipBackgroundColor(Object object)
+            {
+                return delegate.getToolTipBackgroundColor(object);
+            }
+
+            @Override
+            public Color getToolTipForegroundColor(Object object)
+            {
+                return delegate.getToolTipForegroundColor(object);
+            }
+
+            @Override
+            public Font getToolTipFont(Object object)
+            {
+                return delegate.getToolTipFont(object);
+            }
+
+            @Override
+            public boolean isLabelProperty(Object element, String property)
+            {
+                return delegate.isLabelProperty(element, property);
+            }
+
+            @Override
+            public Font getFont(Object element)
+            {
+                if (isCategory(element) || isTotal(element))
+                    return boldFont != null ? boldFont : delegate.getFont(element);
+                return delegate.getFont(element);
+            }
+
+            @Override
+            public void dispose()
+            {
+                delegate.dispose();
+                super.dispose();
+            }
+        };
     }
 
     public void setInput(List<?> items)
