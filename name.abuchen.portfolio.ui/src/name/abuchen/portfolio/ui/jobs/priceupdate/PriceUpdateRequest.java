@@ -1,9 +1,13 @@
 package name.abuchen.portfolio.ui.jobs.priceupdate;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import name.abuchen.portfolio.model.Client;
@@ -15,6 +19,7 @@ import name.abuchen.portfolio.model.Security;
     
     private final Client client;
     private final Map<Security, SecurityUpdateStatus> statuses;
+    private final Set<Security> changedSecurities = ConcurrentHashMap.newKeySet();
 
     private final boolean includeHistorical;
     private final boolean includeLatest;
@@ -63,6 +68,28 @@ import name.abuchen.portfolio.model.Security;
         return progressDirty.getAndSet(false);
     }
 
+    void markSecurityChanged(Security security)
+    {
+        if (security != null)
+            changedSecurities.add(security);
+    }
+
+    private List<Security> drainChangedSecurities()
+    {
+        if (changedSecurities.isEmpty())
+            return Collections.emptyList();
+
+        List<Security> drained = new ArrayList<>(changedSecurities.size());
+        for (Iterator<Security> iterator = changedSecurities.iterator(); iterator.hasNext();)
+        {
+            Security security = iterator.next();
+            iterator.remove();
+            drained.add(security);
+        }
+
+        return drained;
+    }
+
     public Client getClient()
     {
         return client;
@@ -90,6 +117,6 @@ import name.abuchen.portfolio.model.Security;
 
     public PriceUpdateSnapshot getStatusSnapshot()
     {
-        return new PriceUpdateSnapshot(timestamp, statuses);
+        return new PriceUpdateSnapshot(timestamp, statuses, drainChangedSecurities());
     }
 }

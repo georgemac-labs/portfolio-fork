@@ -3,8 +3,10 @@ package name.abuchen.portfolio.ui.jobs.priceupdate;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import name.abuchen.portfolio.model.Security;
 
@@ -12,11 +14,13 @@ public class PriceUpdateSnapshot
 {
     private final long timestamp;
     private final Map<Security, SecurityUpdateStatus> statuses;
+    private final Collection<Security> changedSecurities;
 
     private final int taskCount;
     private final int completedTaskCount;
 
-    public PriceUpdateSnapshot(long timestamp, Map<Security, SecurityUpdateStatus> statuses)
+    public PriceUpdateSnapshot(long timestamp, Map<Security, SecurityUpdateStatus> statuses,
+                    Collection<Security> changedSecurities)
     {
         this.timestamp = timestamp;
 
@@ -31,6 +35,7 @@ public class PriceUpdateSnapshot
         }
 
         this.statuses = Collections.unmodifiableMap(snapshotStatuses);
+        this.changedSecurities = Collections.unmodifiableSet(asImmutableSet(changedSecurities));
 
         var count = 0;
         var completed = 0;
@@ -52,6 +57,14 @@ public class PriceUpdateSnapshot
 
         this.taskCount = count;
         this.completedTaskCount = completed;
+    }
+
+    private static Set<Security> asImmutableSet(Collection<Security> changed)
+    {
+        if (changed == null || changed.isEmpty())
+            return Collections.emptySet();
+
+        return new LinkedHashSet<>(changed);
     }
 
     private static FeedUpdateStatus copyOf(FeedUpdateStatus status)
@@ -97,5 +110,10 @@ public class PriceUpdateSnapshot
     public Collection<Security> getSecurities()
     {
         return statuses.keySet();
+    }
+
+    public Collection<Security> getChangedSecurities()
+    {
+        return changedSecurities;
     }
 }
