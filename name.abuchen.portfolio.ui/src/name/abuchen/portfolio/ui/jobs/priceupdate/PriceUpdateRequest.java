@@ -22,6 +22,7 @@ import name.abuchen.portfolio.model.Security;
     private final List<Security> securities;
 
     private final AtomicBoolean isDirty = new AtomicBoolean(false);
+    private final AtomicBoolean progressDirty = new AtomicBoolean(false);
 
     public PriceUpdateRequest(Client client, List<Security> securities, boolean includeLatest,
                     boolean includeHistorical)
@@ -46,10 +47,20 @@ import name.abuchen.portfolio.model.Security;
     {
         isDirty.set(true);
     }
-    
+
     boolean getAndResetDirty()
     {
         return isDirty.getAndSet(false);
+    }
+
+    void markProgressDirty()
+    {
+        progressDirty.set(true);
+    }
+
+    boolean getAndResetProgressDirty()
+    {
+        return progressDirty.getAndSet(false);
     }
 
     public Client getClient()
