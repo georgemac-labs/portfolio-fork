@@ -156,9 +156,12 @@ public class UpdatePricesJob extends AbstractClientJob
 
         // start periodic UI updates
         ScheduledFuture<?> periodicUpdate = scheduler.scheduleAtFixedRate(() -> {
-            fireSnapshot(request);
-            if (request.getAndResetDirty())
-                request.getClient().markDirty();
+            if (request.getAndResetProgressDirty())
+            {
+                fireSnapshot(request);
+                if (request.getAndResetDirty())
+                    request.getClient().markDirty();
+            }
         }, 0, UI_PROGRESS_UPDATE_INTERVAL, TimeUnit.MILLISECONDS);
 
         JobGroup jobGroup = new JobGroup(Messages.JobLabelUpdating, 10, jobs.size());
@@ -181,7 +184,8 @@ public class UpdatePricesJob extends AbstractClientJob
             periodicUpdate.cancel(false);
             if (request.getAndResetDirty())
                 request.getClient().markDirty();
-            fireSnapshot(request);
+            if (request.getAndResetProgressDirty())
+                fireSnapshot(request);
         }
 
         return Status.OK_STATUS;
