@@ -47,6 +47,7 @@ import name.abuchen.portfolio.ui.PortfolioPlugin;
             var task = candidates.removeFirst();
 
             task.status.setStatus(UpdateStatus.LOADING, null);
+            request.markSecurityChanged(task.security);
             request.markProgressDirty();
 
             try
@@ -54,6 +55,7 @@ import name.abuchen.portfolio.ui.PortfolioPlugin;
                 var status = task.update();
 
                 task.status.setStatus(status, null);
+                request.markSecurityChanged(task.security);
                 request.markProgressDirty();
 
                 task.security.getEphemeralData().touchFeedLastUpdate();
@@ -64,10 +66,12 @@ import name.abuchen.portfolio.ui.PortfolioPlugin;
             catch (AuthenticationExpiredException e)
             {
                 task.status.setStatus(UpdateStatus.ERROR, Messages.MsgAuthenticationExpired);
+                request.markSecurityChanged(task.security);
                 request.markProgressDirty();
                 for (var c : candidates)
                 {
                     c.status.setStatus(UpdateStatus.ERROR, Messages.MsgAuthenticationExpired);
+                    request.markSecurityChanged(c.security);
                     request.markProgressDirty();
                 }
 
@@ -78,6 +82,7 @@ import name.abuchen.portfolio.ui.PortfolioPlugin;
             {
                 task.security.getEphemeralData().setHasPermanentError();
                 task.status.setStatus(UpdateStatus.ERROR, e.getMessage());
+                request.markSecurityChanged(task.security);
                 request.markProgressDirty();
 
                 PortfolioPlugin.log(MessageFormat.format(Messages.MsgInstrumentWithConfigurationIssue,
@@ -94,6 +99,7 @@ import name.abuchen.portfolio.ui.PortfolioPlugin;
 
                     task.status.setStatus(UpdateStatus.WAITING, MessageFormat.format(
                                     Messages.MsgRateLimitExceededAndRetrying, task.security.getName(), maxAttempts));
+                    request.markSecurityChanged(task.security);
                     request.markProgressDirty();
 
                     try
@@ -109,11 +115,13 @@ import name.abuchen.portfolio.ui.PortfolioPlugin;
                 {
                     task.status.setStatus(UpdateStatus.ERROR,
                                     MessageFormat.format(Messages.MsgRateLimitExceeded, task.security.getName()));
+                    request.markSecurityChanged(task.security);
                     request.markProgressDirty();
                     for (var c : candidates)
                     {
                         c.status.setStatus(UpdateStatus.ERROR,
                                         MessageFormat.format(Messages.MsgRateLimitExceeded, c.security.getName()));
+                        request.markSecurityChanged(c.security);
                         request.markProgressDirty();
                     }
 
@@ -124,6 +132,7 @@ import name.abuchen.portfolio.ui.PortfolioPlugin;
             catch (Exception e)
             {
                 task.status.setStatus(UpdateStatus.ERROR, e.getMessage());
+                request.markSecurityChanged(task.security);
                 request.markProgressDirty();
                 PortfolioPlugin.log(e);
             }
