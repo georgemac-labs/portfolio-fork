@@ -3,7 +3,6 @@ package name.abuchen.portfolio.ui.jobs.priceupdate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -80,12 +79,11 @@ import name.abuchen.portfolio.model.Security;
             return Collections.emptyList();
 
         List<Security> drained = new ArrayList<>(changedSecurities.size());
-        for (Iterator<Security> iterator = changedSecurities.iterator(); iterator.hasNext();)
+        changedSecurities.removeIf(security ->
         {
-            Security security = iterator.next();
-            iterator.remove();
             drained.add(security);
-        }
+            return true;
+        });
 
         return drained;
     }
