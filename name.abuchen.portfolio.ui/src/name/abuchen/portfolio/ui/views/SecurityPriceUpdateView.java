@@ -17,7 +17,6 @@ import java.util.Optional;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
-import org.eclipse.e4.core.di.annotations.Optional;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IMenuManager;
 import org.eclipse.jface.action.MenuManager;
@@ -119,7 +118,7 @@ public class SecurityPriceUpdateView extends AbstractFinanceView implements Pric
     }
 
     @Inject
-    @Optional
+    @org.eclipse.e4.core.di.annotations.Optional
     public void setup(@Named(UIConstants.Parameter.VIEW_PARAMETER) PriceUpdateSnapshot status)
     {
         this.statuses = status;
