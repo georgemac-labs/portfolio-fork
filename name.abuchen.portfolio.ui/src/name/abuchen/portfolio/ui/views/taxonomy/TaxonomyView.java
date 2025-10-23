@@ -297,17 +297,23 @@ public class TaxonomyView extends AbstractFinanceView implements PropertyChangeL
                 search.setMessage(Messages.LabelSearch);
                 search.setSize(300, SWT.DEFAULT);
 
+                search.addListener(SWT.Selection, event -> {
+                    if (event.detail == SWT.ICON_CANCEL)
+                        search.setText("");
+                });
+
                 search.addModifyListener(e -> {
-                    String filterText = Pattern.quote(search.getText().trim());
-                    if (filterText.isEmpty())
+                    var text = search.getText().trim();
+                    if (text.isEmpty())
                     {
                         model.setFilterPattern(null);
                         model.fireTaxonomyModelChange(model.getVirtualRootNode());
                     }
                     else
                     {
-                        Pattern p = Pattern.compile(".*" + filterText + ".*", Pattern.CASE_INSENSITIVE); //$NON-NLS-1$ //$NON-NLS-2$
-                        model.setFilterPattern(p);
+                        var filterText = Pattern.quote(text);
+                        var pattern = Pattern.compile(".*" + filterText + ".*", Pattern.CASE_INSENSITIVE); //$NON-NLS-1$ //$NON-NLS-2$
+                        model.setFilterPattern(pattern);
                         model.fireTaxonomyModelChange(model.getVirtualRootNode());
                     }
                 });

@@ -293,15 +293,21 @@ public class TradeDetailsView extends AbstractFinanceView
                 search.setMessage(Messages.LabelSearch);
                 search.setSize(300, SWT.DEFAULT);
 
+                search.addListener(SWT.Selection, event -> {
+                    if (event.detail == SWT.ICON_CANCEL)
+                        search.setText("");
+                });
+
                 search.addModifyListener(e -> {
-                    String filterText = Pattern.quote(search.getText().trim());
-                    if (filterText.length() == 0)
+                    var text = search.getText().trim();
+                    if (text.isEmpty())
                     {
                         filterPattern = null;
                         table.getTableViewer().refresh(false);
                     }
                     else
                     {
+                        var filterText = Pattern.quote(text);
                         filterPattern = Pattern.compile(".*" + filterText + ".*", //$NON-NLS-1$ //$NON-NLS-2$
                                         Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
                         table.getTableViewer().refresh(false);

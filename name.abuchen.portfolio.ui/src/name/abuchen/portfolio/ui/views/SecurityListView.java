@@ -437,15 +437,21 @@ public class SecurityListView extends AbstractFinanceView
                 search.setMessage(Messages.LabelSearch);
                 search.setSize(300, SWT.DEFAULT);
 
+                search.addListener(SWT.Selection, event -> {
+                    if (event.detail == SWT.ICON_CANCEL)
+                        search.setText("");
+                });
+
                 search.addModifyListener(e -> {
-                    String filterText = Pattern.quote(search.getText().trim());
-                    if (filterText.length() == 0)
+                    var text = search.getText().trim();
+                    if (text.isEmpty())
                     {
                         filterPattern = null;
                         securities.refresh(false);
                     }
                     else
                     {
+                        var filterText = Pattern.quote(text);
                         filterPattern = Pattern.compile(".*" + filterText + ".*", Pattern.CASE_INSENSITIVE | Pattern.DOTALL); //$NON-NLS-1$ //$NON-NLS-2$
                         securities.refresh(false);
                     }
