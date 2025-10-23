@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -42,9 +43,12 @@ public class TradesGroupedByTaxonomy
         if (taxonomy == null)
             return;
 
-        final boolean multiCurrencyMode = allTrades.stream()
+        Set<String> distinctCurrencies = allTrades.stream()
                         .map(t -> t.getProfitLoss() != null ? t.getProfitLoss().getCurrencyCode() : null)
-                        .filter(Objects::nonNull).distinct().count() > 1;
+                        .filter(Objects::nonNull).collect(Collectors.toSet());
+
+        final boolean multiCurrencyMode = distinctCurrencies.size() > 1
+                        || distinctCurrencies.stream().anyMatch(code -> !code.equals(converter.getTermCurrency()));
 
         // track how much weight has been assigned to each trade
         Map<Trade, Integer> tradeAssignedWeights = new HashMap<>();

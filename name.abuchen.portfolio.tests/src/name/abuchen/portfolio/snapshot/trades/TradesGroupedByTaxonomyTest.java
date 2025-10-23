@@ -327,6 +327,50 @@ public class TradesGroupedByTaxonomyTest
     }
 
     @Test
+    public void testSecurityCurrencyModeWithSingleCurrencyKeepsCategoryCurrency() throws Exception
+    {
+        Client client = new Client();
+        client.setBaseCurrency(CurrencyUnit.EUR);
+
+        Security usdSecurity = new SecurityBuilder(CurrencyUnit.USD) //
+                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2015-01-01", Values.Amount.factorize(200000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(usdSecurity, "2015-01-02", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(usdSecurity, "2015-01-09", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("equities") //
+                        .addTo(client);
+
+        Classification equities = taxonomy.getClassificationById("equities");
+        equities.addAssignment(new Classification.Assignment(usdSecurity));
+
+        TestCurrencyConverter converter = new TestCurrencyConverter(CurrencyUnit.EUR);
+
+        List<Trade> trades = new java.util.ArrayList<>();
+        trades.addAll(new TradeCollector(client, converter.with(CurrencyUnit.USD)).collect(usdSecurity));
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
+
+        TradeCategory equitiesCategory = grouped.byClassification(equities);
+        assertThat(equitiesCategory, notNullValue());
+        assertThat(equitiesCategory.getCurrencyKey(), is(CurrencyUnit.USD));
+
+        Trade usdTrade = trades.get(0);
+        assertThat(usdTrade.getProfitLoss().getCurrencyCode(), is(CurrencyUnit.USD));
+        assertThat(equitiesCategory.getTotalProfitLoss(), is(usdTrade.getProfitLoss()));
+        assertThat(grouped.asList().size(), is(1));
+    }
+
+    @Test
     public void testTotalProfitLossConvertedFromSecurityCurrencies() throws Exception
     {
         Client client = new Client();

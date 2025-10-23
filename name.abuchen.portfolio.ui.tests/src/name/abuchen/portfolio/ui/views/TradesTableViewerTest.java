@@ -1,6 +1,8 @@
 package name.abuchen.portfolio.ui.views;
 
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.number.IsCloseTo.closeTo;
 
@@ -14,17 +16,23 @@ import org.junit.Test;
 import name.abuchen.portfolio.junit.AccountBuilder;
 import name.abuchen.portfolio.junit.PortfolioBuilder;
 import name.abuchen.portfolio.junit.SecurityBuilder;
+import name.abuchen.portfolio.junit.TaxonomyBuilder;
 import name.abuchen.portfolio.junit.TestCurrencyConverter;
 import name.abuchen.portfolio.model.Account;
 import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Security;
+import name.abuchen.portfolio.model.Taxonomy;
+import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.trades.Trade;
 import name.abuchen.portfolio.snapshot.trades.TradeCollector;
+import name.abuchen.portfolio.snapshot.trades.TradeCategory;
+import name.abuchen.portfolio.snapshot.trades.TradesGroupedByTaxonomy;
 import name.abuchen.portfolio.ui.views.trades.TradeElement;
 import name.abuchen.portfolio.ui.util.viewers.Column;
 import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.TouchClientListener;
+import name.abuchen.portfolio.ui.util.viewers.MoneyColorLabelProvider;
 import name.abuchen.portfolio.ui.views.columns.NameColumn;
 
 @SuppressWarnings("nls")
@@ -101,6 +109,66 @@ public class TradesTableViewerTest
 
         assertThat(element.getWeightedShares(), is(expectedWeightedShares));
         assertThat(new TradeElement(trade, 0, 1.0).getWeightedShares(), is(trade.getShares()));
+    }
+
+    @Test
+    public void categoryAndTradeRowsShareCurrencyFormattingInSecurityCurrencyMode() throws Exception
+    {
+        Client client = new Client();
+        client.setBaseCurrency(CurrencyUnit.EUR);
+
+        Security usdSecurity = new SecurityBuilder(CurrencyUnit.USD) //
+                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2015-01-01", Values.Amount.factorize(200000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(usdSecurity, "2015-01-02", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(usdSecurity, "2015-01-09", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("equities") //
+                        .addTo(client);
+
+        Classification equities = taxonomy.getClassificationById("equities");
+        equities.addAssignment(new Classification.Assignment(usdSecurity));
+
+        TestCurrencyConverter converter = new TestCurrencyConverter(CurrencyUnit.EUR);
+        TradeCollector collector = new TradeCollector(client, converter.with(CurrencyUnit.USD));
+
+        List<Trade> trades = collector.collect(usdSecurity);
+        Trade trade = trades.get(0);
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
+        TradeCategory category = grouped.byClassification(equities);
+
+        TradeElement tradeElement = new TradeElement(trade, 1, 1.0);
+        TradeElement categoryElement = new TradeElement(category, 0);
+
+        MoneyColorLabelProvider provider = new MoneyColorLabelProvider(element -> {
+            if (element instanceof TradeElement te)
+            {
+                if (te.isTrade())
+                    return te.getTrade().getProfitLoss();
+                if (te.isCategory())
+                    return te.getCategory().getTotalProfitLoss();
+            }
+            return null;
+        }, client);
+
+        String tradeText = provider.getText(tradeElement);
+        String categoryText = provider.getText(categoryElement);
+
+        assertThat(category, notNullValue());
+        assertThat(tradeText, notNullValue());
+        assertThat(categoryText, notNullValue());
+        assertThat(tradeText, is(categoryText));
+        assertThat(tradeText, containsString(CurrencyUnit.USD));
     }
 
     @Test
