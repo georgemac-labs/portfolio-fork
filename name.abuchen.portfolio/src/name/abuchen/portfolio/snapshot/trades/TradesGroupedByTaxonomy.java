@@ -104,10 +104,11 @@ public class TradesGroupedByTaxonomy
         categories.addAll(keyToCategory.values().stream().filter(c -> c.getTotalWeight() > 0)
                         .collect(Collectors.toList()));
 
-        // sort by classification rank (and id as tie-breaker for deterministic order)
+        // sort by classification rank, id, and currency to keep multi-currency clones deterministic
         Collections.sort(categories,
                         Comparator.comparingInt((TradeCategory c) -> c.getClassification().getRank())
-                                        .thenComparing(c -> c.getClassification().getId()));
+                                        .thenComparing(c -> c.getClassification().getId())
+                                        .thenComparing(TradeCategory::getCurrencyKey));
 
         // handle unassigned trades
         createUnassignedCategory(tradeAssignedWeights, multiCurrencyMode);

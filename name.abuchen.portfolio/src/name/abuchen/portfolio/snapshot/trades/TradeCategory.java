@@ -79,6 +79,7 @@ public class TradeCategory
     private final Classification classification;
     private final Classification taxonomyClassification;
     private final CurrencyConverter converter;
+    private final String currencyKey;
     private final List<WeightedTrade> weightedTrades = new ArrayList<>();
 
     // lazy calculations
@@ -101,6 +102,7 @@ public class TradeCategory
         this.classification = classification;
         this.taxonomyClassification = classification;
         this.converter = converter;
+        this.currencyKey = converter.getTermCurrency();
     }
 
     /**
@@ -119,6 +121,7 @@ public class TradeCategory
     /* package */ TradeCategory(Classification classification, CurrencyConverter converter, String currencyCode)
     {
         this.converter = converter.with(currencyCode);
+        this.currencyKey = this.converter.getTermCurrency();
         this.taxonomyClassification = classification;
         this.classification = new Classification(classification.getParent(), //
                         classification.getId(), //
@@ -134,6 +137,11 @@ public class TradeCategory
     public Classification getTaxonomyClassification()
     {
         return taxonomyClassification;
+    }
+
+    public String getCurrencyKey()
+    {
+        return currencyKey;
     }
 
     /* package */ void addTrade(Trade trade, double weight)
