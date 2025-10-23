@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.greaterThan;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.junit.Test;
 
@@ -388,5 +389,74 @@ public class TradesGroupedByTaxonomyTest
                         .collect(MoneyCollectors.sum(converter.getTermCurrency()));
 
         assertThat(grouped.getTotalProfitLossWithoutTaxesAndFees(), is(expectedWithout));
+    }
+
+    @Test
+    public void testMultiCurrencyCloneOrderingIsStable() throws Exception
+    {
+        var observedOrders = new java.util.HashSet<List<String>>();
+
+        observedOrders.add(extractCurrencyOrder(false));
+        observedOrders.add(extractCurrencyOrder(true));
+        observedOrders.add(extractCurrencyOrder(false));
+
+        assertThat(observedOrders.size(), is(1));
+        assertThat(observedOrders.iterator().next(), is(List.of(CurrencyUnit.EUR, CurrencyUnit.USD)));
+    }
+
+    private List<String> extractCurrencyOrder(boolean reverseTrades) throws Exception
+    {
+        List<TradeCategory> categories = buildMultiCurrencyCategories(reverseTrades);
+        assertThat(categories.size(), is(2));
+        return categories.stream().map(TradeCategory::getCurrencyKey).collect(Collectors.toList());
+    }
+
+    private List<TradeCategory> buildMultiCurrencyCategories(boolean reverseTrades) throws Exception
+    {
+        Client client = new Client();
+
+        Security eurSecurity = new SecurityBuilder(CurrencyUnit.EUR) //
+                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Security usdSecurity = new SecurityBuilder(CurrencyUnit.USD) //
+                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2015-01-01", Values.Amount.factorize(200000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(eurSecurity, "2015-01-02", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(eurSecurity, "2015-01-09", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .buy(usdSecurity, "2015-01-02", Values.Share.factorize(50), Values.Amount.factorize(8000)) //
+                        .sell(usdSecurity, "2015-01-09", Values.Share.factorize(50), Values.Amount.factorize(8500)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("global") //
+                        .addTo(client);
+
+        Classification global = taxonomy.getClassificationById("global");
+        global.addAssignment(new Classification.Assignment(eurSecurity));
+        global.addAssignment(new Classification.Assignment(usdSecurity));
+
+        TestCurrencyConverter converter = new TestCurrencyConverter(CurrencyUnit.EUR);
+
+        List<Trade> trades = new java.util.ArrayList<>();
+        trades.addAll(new TradeCollector(client, converter.with(CurrencyUnit.EUR)).collect(eurSecurity));
+        trades.addAll(new TradeCollector(client, converter.with(CurrencyUnit.USD)).collect(usdSecurity));
+
+        if (reverseTrades)
+            java.util.Collections.reverse(trades);
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
+
+        return grouped.asList().stream() //
+                        .filter(c -> c.getTaxonomyClassification() == global) //
+                        .collect(Collectors.toList());
     }
 }
