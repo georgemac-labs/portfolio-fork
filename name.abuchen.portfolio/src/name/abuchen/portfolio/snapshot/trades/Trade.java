@@ -386,6 +386,9 @@ public class Trade implements Adaptable
                         : r.get().getMovingAverageCostWithoutTaxesAndFees().get();
         var totalShares = r.get().getSharesHeld().get();
 
+        if (totalShares <= 0)
+            return Money.of(totalCosts.getCurrencyCode(), 0);
+
         var cost = BigDecimal.valueOf(shares / (double) totalShares) //
                         .multiply(BigDecimal.valueOf(totalCosts.getAmount())) //
                         .setScale(0, RoundingMode.HALF_DOWN).longValue();
