@@ -389,4 +389,49 @@ public class TradesGroupedByTaxonomyTest
 
         assertThat(grouped.getTotalProfitLossWithoutTaxesAndFees(), is(expectedWithout));
     }
+
+    @Test
+    public void testSecurityCurrencyModeWithSingleCurrencyKeepsTradeCurrency() throws Exception
+    {
+        Client client = new Client();
+
+        Security usdSecurity = new SecurityBuilder(CurrencyUnit.USD) //
+                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2015-01-01", Values.Amount.factorize(200000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(usdSecurity, "2015-01-02", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(usdSecurity, "2015-01-09", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("equities") //
+                        .addTo(client);
+
+        Classification equities = taxonomy.getClassificationById("equities");
+        equities.addAssignment(new Classification.Assignment(usdSecurity));
+
+        TestCurrencyConverter baseConverter = new TestCurrencyConverter(CurrencyUnit.EUR);
+
+        List<Trade> trades = new TradeCollector(client, baseConverter.with(CurrencyUnit.USD)).collect(usdSecurity);
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, baseConverter);
+
+        TradeCategory category = grouped.byClassification(equities);
+        assertThat(category, notNullValue());
+
+        Money tradeProfit = trades.get(0).getProfitLoss();
+
+        assertThat(category.getTotalProfitLoss().getCurrencyCode(), is(CurrencyUnit.USD));
+        assertThat(category.getTotalProfitLoss(), is(tradeProfit));
+
+        String formattedTrade = Values.Money.format(tradeProfit, baseConverter.getTermCurrency());
+        String formattedCategory = Values.Money.format(category.getTotalProfitLoss(), baseConverter.getTermCurrency());
+        assertThat(formattedCategory, is(formattedTrade));
+    }
 }

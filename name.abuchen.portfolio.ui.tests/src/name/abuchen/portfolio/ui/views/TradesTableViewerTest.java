@@ -14,14 +14,18 @@ import org.junit.Test;
 import name.abuchen.portfolio.junit.AccountBuilder;
 import name.abuchen.portfolio.junit.PortfolioBuilder;
 import name.abuchen.portfolio.junit.SecurityBuilder;
+import name.abuchen.portfolio.junit.TaxonomyBuilder;
 import name.abuchen.portfolio.junit.TestCurrencyConverter;
 import name.abuchen.portfolio.model.Account;
 import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Security;
+import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.trades.Trade;
 import name.abuchen.portfolio.snapshot.trades.TradeCollector;
+import name.abuchen.portfolio.snapshot.trades.TradeCategory;
+import name.abuchen.portfolio.snapshot.trades.TradesGroupedByTaxonomy;
 import name.abuchen.portfolio.ui.views.trades.TradeElement;
 import name.abuchen.portfolio.ui.util.viewers.Column;
 import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.TouchClientListener;
@@ -137,5 +141,45 @@ public class TradesTableViewerTest
         assertThat(security.getName(), is("Renamed Security"));
         assertThat(client.getSecurities().get(0).getName(), is("Renamed Security"));
         assertThat(touched.get(), is(true));
+    }
+
+    @Test
+    public void categoryAndTradeFormattingMatchInSecurityCurrencyMode() throws Exception
+    {
+        Client client = new Client();
+
+        Security usdSecurity = new SecurityBuilder(CurrencyUnit.USD) //
+                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2015-01-01", Values.Amount.factorize(200000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(usdSecurity, "2015-01-02", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(usdSecurity, "2015-01-09", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("equities") //
+                        .addTo(client);
+
+        Classification equities = taxonomy.getClassificationById("equities");
+        equities.addAssignment(new Classification.Assignment(usdSecurity));
+
+        TestCurrencyConverter baseConverter = new TestCurrencyConverter(CurrencyUnit.EUR);
+
+        List<Trade> trades = new TradeCollector(client, baseConverter.with(CurrencyUnit.USD)).collect(usdSecurity);
+        Trade trade = trades.get(0);
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, baseConverter);
+        TradeCategory category = grouped.byClassification(equities);
+
+        String formattedTrade = Values.Money.format(trade.getProfitLoss(), baseConverter.getTermCurrency());
+        String formattedCategory = Values.Money.format(category.getTotalProfitLoss(), baseConverter.getTermCurrency());
+
+        assertThat(formattedCategory, is(formattedTrade));
     }
 }

@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import name.abuchen.portfolio.Messages;
@@ -42,9 +43,17 @@ public class TradesGroupedByTaxonomy
         if (taxonomy == null)
             return;
 
-        final boolean multiCurrencyMode = allTrades.stream()
-                        .map(t -> t.getProfitLoss() != null ? t.getProfitLoss().getCurrencyCode() : null)
-                        .filter(Objects::nonNull).distinct().count() > 1;
+        Set<String> profitLossCurrencies = allTrades.stream() //
+                        .map(Trade::getProfitLoss) //
+                        .filter(Objects::nonNull) //
+                        .map(Money::getCurrencyCode) //
+                        .filter(Objects::nonNull) //
+                        .collect(Collectors.toSet());
+
+        boolean hasCurrencyDifferentFromTerm = profitLossCurrencies.stream() //
+                        .anyMatch(code -> !Objects.equals(code, converter.getTermCurrency()));
+
+        final boolean multiCurrencyMode = profitLossCurrencies.size() > 1 || hasCurrencyDifferentFromTerm;
 
         // track how much weight has been assigned to each trade
         Map<Trade, Integer> tradeAssignedWeights = new HashMap<>();
