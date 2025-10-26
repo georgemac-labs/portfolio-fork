@@ -2,6 +2,7 @@ package name.abuchen.portfolio.ui.views.trades;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -208,6 +209,7 @@ public class TradeDetailsView extends AbstractFinanceView
     private MutableBoolean onlyLossMaking = new MutableBoolean(false);
 
     private Pattern filterPattern;
+    private Predicate<Trade> searchPredicate = trade -> true;
 
     @Inject
     @Optional
@@ -350,15 +352,7 @@ public class TradeDetailsView extends AbstractFinanceView
 
                 search.addModifyListener(e -> {
                     String filterText = search.getText().trim();
-                    if (filterText.isEmpty())
-                    {
-                        filterPattern = null;
-                    }
-                    else
-                    {
-                        filterPattern = Pattern.compile(".*" + Pattern.quote(filterText) + ".*", //$NON-NLS-1$ //$NON-NLS-2$
-                                        Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-                    }
+                    searchPredicate = buildSearchPredicate(filterText);
                     update();
                 });
 
@@ -554,8 +548,7 @@ public class TradeDetailsView extends AbstractFinanceView
             filteredTrades = filteredTrades.filter(Trade::isLoss);
         if (onlyProfitable.isTrue())
             filteredTrades = filteredTrades.filter(t -> t.getProfitLoss().isPositive());
-        if (filterPattern != null)
-            filteredTrades = filteredTrades.filter(this::matchesFilter);
+        filteredTrades = filteredTrades.filter(searchPredicate);
 
         List<Trade> trades = filteredTrades.collect(Collectors.toList());
 
@@ -658,12 +651,25 @@ public class TradeDetailsView extends AbstractFinanceView
         return elements;
     }
 
-    private boolean matchesFilter(Trade trade)
+    private Predicate<Trade> buildSearchPredicate(String filterText)
     {
-        if (filterPattern == null)
-            return true;
+        if (filterText.isEmpty())
+        {
+            filterPattern = null;
+            return trade -> true;
+        }
 
+        Pattern pattern = Pattern.compile(".*" + Pattern.quote(filterText) + ".*", //$NON-NLS-1$ //$NON-NLS-2$
+                        Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+        filterPattern = pattern;
+        return trade -> matchesFilter(pattern, trade);
+    }
+
+    private boolean matchesFilter(Pattern pattern, Trade trade)
+    {
         Security security = trade.getSecurity();
+        if (security == null)
+            return false;
 
         String[] properties = new String[] { security.getName(), //
                         security.getIsin(), //
@@ -673,7 +679,7 @@ public class TradeDetailsView extends AbstractFinanceView
 
         for (String property : properties)
         {
-            if (property != null && filterPattern.matcher(property).matches())
+            if (property != null && pattern.matcher(property).matches())
                 return true;
         }
 
