@@ -921,7 +921,6 @@ public class Messages extends NLS
     public static String LabelTotalSum;
     public static String LabelTotalValuePercent;
     public static String LabelTrades;
-    public static String LabelTradesByTaxonomy;
     public static String LabelTradesBasicStatistics;
     public static String LabelTradesProfitLoss;
     public static String LabelTradesTurnoverRate;
