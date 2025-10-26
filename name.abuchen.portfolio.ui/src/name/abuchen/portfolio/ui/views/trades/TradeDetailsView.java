@@ -2,10 +2,8 @@ package name.abuchen.portfolio.ui.views.trades;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.inject.Inject;
@@ -22,6 +20,8 @@ import org.eclipse.jface.action.ToolBarManager;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.viewers.IStructuredSelection;
+import org.eclipse.jface.viewers.Viewer;
+import org.eclipse.jface.viewers.ViewerFilter;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.KeyListener;
 import org.eclipse.swt.widgets.Composite;
@@ -208,8 +208,7 @@ public class TradeDetailsView extends AbstractFinanceView
     private MutableBoolean onlyProfitable = new MutableBoolean(false);
     private MutableBoolean onlyLossMaking = new MutableBoolean(false);
 
-    private Pattern filterPattern;
-    private Predicate<Trade> searchPredicate = trade -> true;
+    private Pattern searchPattern;
 
     @Inject
     @Optional
@@ -351,8 +350,8 @@ public class TradeDetailsView extends AbstractFinanceView
                 search.setSize(300, SWT.DEFAULT);
 
                 search.addModifyListener(e -> {
-                    String filterText = search.getText().trim();
-                    searchPredicate = buildSearchPredicate(filterText);
+                    var filterText = search.getText().trim();
+                    searchPattern = compileSearchPattern(filterText);
                     update();
                 });
 
@@ -438,6 +437,15 @@ public class TradeDetailsView extends AbstractFinanceView
         table = new TradesTableViewer(this);
 
         Control control = table.createViewControl(parent, TradesTableViewer.ViewMode.MULTIPLE_SECURITES);
+
+        table.getTableViewer().addFilter(new ViewerFilter()
+        {
+            @Override
+            public boolean select(Viewer viewer, Object parentElement, Object element)
+            {
+                return matchesSearch(element);
+            }
+        });
 
         table.getTableViewer().addSelectionChangedListener(event -> {
             var structured = event.getStructuredSelection();
@@ -536,26 +544,14 @@ public class TradeDetailsView extends AbstractFinanceView
 
     private void update()
     {
-        Input data = usePreselectedTrades.isTrue() ? input : collectAllTrades();
+        var data = usePreselectedTrades.isTrue() ? input : collectAllTrades();
 
-        Stream<Trade> filteredTrades = data.getTrades().stream();
-
-        if (onlyClosed.isTrue())
-            filteredTrades = filteredTrades.filter(Trade::isClosed);
-        if (onlyOpen.isTrue())
-            filteredTrades = filteredTrades.filter(t -> !t.isClosed());
-        if (onlyLossMaking.isTrue())
-            filteredTrades = filteredTrades.filter(Trade::isLoss);
-        if (onlyProfitable.isTrue())
-            filteredTrades = filteredTrades.filter(t -> t.getProfitLoss().isPositive());
-        filteredTrades = filteredTrades.filter(searchPredicate);
-
-        List<Trade> trades = filteredTrades.collect(Collectors.toList());
+        var trades = filterTrades(data);
 
         // If taxonomy is selected, group trades; otherwise show flat list
         if (taxonomy != null)
         {
-            TradesGroupedByTaxonomy groupedTrades = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
+            var groupedTrades = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
             table.setInput(flattenToElements(groupedTrades));
         }
         else
@@ -563,7 +559,7 @@ public class TradeDetailsView extends AbstractFinanceView
             table.setInput(trades);
         }
 
-        ToolBarManager toolBar = getToolBarManager();
+        var toolBar = getToolBarManager();
 
         if (!data.getErrors().isEmpty())
         {
@@ -651,21 +647,52 @@ public class TradeDetailsView extends AbstractFinanceView
         return elements;
     }
 
-    private Predicate<Trade> buildSearchPredicate(String filterText)
+    private List<Trade> filterTrades(Input data)
     {
-        if (filterText.isEmpty())
-        {
-            filterPattern = null;
-            return trade -> true;
-        }
+        var filteredTrades = data.getTrades().stream();
 
-        Pattern pattern = Pattern.compile(".*" + Pattern.quote(filterText) + ".*", //$NON-NLS-1$ //$NON-NLS-2$
-                        Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-        filterPattern = pattern;
-        return trade -> matchesFilter(pattern, trade);
+        if (onlyClosed.isTrue())
+            filteredTrades = filteredTrades.filter(Trade::isClosed);
+        if (onlyOpen.isTrue())
+            filteredTrades = filteredTrades.filter(t -> !t.isClosed());
+        if (onlyLossMaking.isTrue())
+            filteredTrades = filteredTrades.filter(Trade::isLoss);
+        if (onlyProfitable.isTrue())
+            filteredTrades = filteredTrades.filter(t -> t.getProfitLoss().isPositive());
+        if (searchPattern != null)
+            filteredTrades = filteredTrades.filter(trade -> matchesSearch(searchPattern, trade));
+
+        return filteredTrades.collect(Collectors.toList());
     }
 
-    private boolean matchesFilter(Pattern pattern, Trade trade)
+    private boolean matchesSearch(Object element)
+    {
+        if (searchPattern == null)
+            return true;
+
+        if (element instanceof TradeElement tradeElement)
+        {
+            if (!tradeElement.isTrade())
+                return true;
+            return matchesSearch(searchPattern, tradeElement.getTrade());
+        }
+
+        if (element instanceof Trade trade)
+            return matchesSearch(searchPattern, trade);
+
+        return true;
+    }
+
+    private Pattern compileSearchPattern(String filterText)
+    {
+        if (filterText.isEmpty())
+            return null;
+
+        return Pattern.compile(".*" + Pattern.quote(filterText) + ".*", //$NON-NLS-1$ //$NON-NLS-2$
+                        Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    }
+
+    private boolean matchesSearch(Pattern pattern, Trade trade)
     {
         Security security = trade.getSecurity();
         if (security == null)
