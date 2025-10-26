@@ -3,13 +3,22 @@ package name.abuchen.portfolio.ui.views;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.number.IsCloseTo.closeTo;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import org.junit.Test;
 
@@ -29,11 +38,18 @@ import name.abuchen.portfolio.snapshot.trades.Trade;
 import name.abuchen.portfolio.snapshot.trades.TradeCollector;
 import name.abuchen.portfolio.snapshot.trades.TradeCategory;
 import name.abuchen.portfolio.snapshot.trades.TradesGroupedByTaxonomy;
+import name.abuchen.portfolio.ui.editor.AbstractFinanceView;
 import name.abuchen.portfolio.ui.views.trades.TradeElement;
 import name.abuchen.portfolio.ui.util.viewers.Column;
 import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.TouchClientListener;
 import name.abuchen.portfolio.ui.util.viewers.MoneyColorLabelProvider;
 import name.abuchen.portfolio.ui.views.columns.NameColumn;
+import name.abuchen.portfolio.ui.util.viewers.ShowHideColumnHelper;
+
+import org.eclipse.jface.viewers.ColumnLabelProvider;
+import org.eclipse.jface.viewers.TableViewer;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
 
 @SuppressWarnings("nls")
 public class TradesTableViewerTest
@@ -205,5 +221,98 @@ public class TradesTableViewerTest
         assertThat(security.getName(), is("Renamed Security"));
         assertThat(client.getSecurities().get(0).getName(), is("Renamed Security"));
         assertThat(touched.get(), is(true));
+    }
+
+    @Test
+    public void renamingSecurityRefreshesAllTradeElements() throws Exception
+    {
+        Client client = new Client();
+
+        Security security = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-02-01", Values.Quote.factorize(110)) //
+                        .addTo(client);
+        security.setName("Original");
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2020-01-01", Values.Amount.factorize(20000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(security, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(security, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .addTo(client);
+
+        TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
+        Trade trade = collector.collect(security).get(0);
+
+        TradesTableViewer viewer = new TradesTableViewer(new DummyFinanceView(client));
+
+        TableViewer tableViewer = mock(TableViewer.class);
+        Field tradesField = TradesTableViewer.class.getDeclaredField("trades");
+        tradesField.setAccessible(true);
+        tradesField.set(viewer, tableViewer);
+
+        ShowHideColumnHelper helper = mock(ShowHideColumnHelper.class);
+        List<Column> columns = new ArrayList<>();
+        doAnswer(invocation -> {
+            Column column = invocation.getArgument(0);
+            columns.add(column);
+            return null;
+        }).when(helper).addColumn(any(Column.class));
+        doAnswer(invocation -> columns.stream()).when(helper).getColumns();
+
+        Method method = TradesTableViewer.class.getDeclaredMethod("createTradesColumns", ShowHideColumnHelper.class,
+                        TradesTableViewer.ViewMode.class);
+        method.setAccessible(true);
+        method.invoke(viewer, helper, TradesTableViewer.ViewMode.MULTIPLE_SECURITES);
+
+        Column nameColumn = columns.stream().filter(NameColumn.class::isInstance).findFirst().orElseThrow();
+        ColumnLabelProvider provider = (ColumnLabelProvider) nameColumn.getLabelProvider().get();
+
+        List<TradeElement> elements = List.of(new TradeElement(trade, 0, 1.0), new TradeElement(trade, 1, 0.5));
+        List<String> renderedNames = elements.stream().map(provider::getText)
+                        .collect(Collectors.toCollection(ArrayList::new));
+
+        assertThat(renderedNames, everyItem(is("Original")));
+
+        doAnswer(invocation -> {
+            for (int i = 0; i < elements.size(); i++)
+                renderedNames.set(i, provider.getText(elements.get(i)));
+            return null;
+        }).when(tableViewer).refresh(true);
+
+        nameColumn.getEditingSupport().setValue(elements.get(0), "Renamed Security");
+
+        assertThat(renderedNames, everyItem(is("Renamed Security")));
+        verify(tableViewer).refresh(true);
+    }
+
+    private static final class DummyFinanceView extends AbstractFinanceView
+    {
+        private final Client client;
+
+        private DummyFinanceView(Client client)
+        {
+            this.client = client;
+        }
+
+        @Override
+        protected String getDefaultTitle()
+        {
+            return "Test";
+        }
+
+        @Override
+        protected Control createBody(Composite parent)
+        {
+            return null;
+        }
+
+        @Override
+        public Client getClient()
+        {
+            return client;
+        }
     }
 }
