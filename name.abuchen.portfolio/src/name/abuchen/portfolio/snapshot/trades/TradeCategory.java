@@ -305,7 +305,8 @@ public class TradeCategory
             if (!trade.isClosed())
             {
                 LocalDate date = LocalDate.now();
-                double amount = trade.getExitValue().getAmount() / Values.Amount.divider();
+                double amount = trade.getExitValue().with(converter.at(date)).getAmount()
+                                / Values.Amount.divider();
                 amount *= weight;
                 if (!isLong)
                     amount = collateral - amount;
