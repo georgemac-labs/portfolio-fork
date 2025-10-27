@@ -161,7 +161,8 @@ public class TradesTableViewerTest
         Trade trade = trades.get(0);
 
         TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
-        TradeCategory category = grouped.byClassification(equities);
+        TradeCategory category = grouped.asList().stream()
+                        .filter(c -> c.getTaxonomyClassification() == equities).findFirst().orElse(null);
 
         TradeElement tradeElement = new TradeElement(trade, 1, 1.0);
         TradeElement categoryElement = new TradeElement(category, 0);
