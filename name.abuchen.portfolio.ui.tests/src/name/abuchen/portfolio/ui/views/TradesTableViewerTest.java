@@ -21,7 +21,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import org.eclipse.jface.preference.PreferenceStore;
+import org.junit.After;
 import org.junit.AfterClass;
+import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -64,9 +66,9 @@ public class TradesTableViewerTest
 {
     private static PortfolioPlugin previousPlugin;
     private static PortfolioPlugin testPlugin;
-    private static Display display;
-    private static boolean disposeDisplay;
-    private static Realm realm;
+    private Display display;
+    private boolean disposeDisplay;
+    private Realm realm;
 
     @BeforeClass
     public static void ensurePreferenceStore() throws Exception
@@ -82,7 +84,6 @@ public class TradesTableViewerTest
             ensurePreferenceStore(previousPlugin);
         }
 
-        ensureDisplayRealm();
     }
 
     @AfterClass
@@ -97,15 +98,6 @@ public class TradesTableViewerTest
                 instanceField.set(null, previousPlugin);
                 testPlugin = null;
             }
-
-            if (disposeDisplay && display != null && !display.isDisposed())
-            {
-                display.dispose();
-            }
-
-            display = null;
-            realm = null;
-            disposeDisplay = false;
         }
     }
 
@@ -117,31 +109,47 @@ public class TradesTableViewerTest
             preferenceStoreField.set(plugin, new PreferenceStore());
     }
 
-    private static void ensureDisplayRealm()
+    @Before
+    public void setUpRealm()
     {
-        synchronized (TradesTableViewerTest.class)
-        {
-            if (display == null || display.isDisposed())
-            {
-                Display current = Display.getCurrent();
-                if (current != null && !current.isDisposed())
-                {
-                    display = current;
-                    disposeDisplay = false;
-                }
-                else
-                {
-                    display = new Display();
-                    disposeDisplay = true;
-                }
-            }
-
-            if (realm == null)
-                realm = DisplayRealm.getRealm(display);
-        }
+        ensureDisplayRealm();
     }
 
-    private static void runWithDisplayRealm(ThrowingRunnable runnable) throws Exception
+    @After
+    public void tearDownRealm()
+    {
+        if (disposeDisplay && display != null && !display.isDisposed())
+        {
+            display.dispose();
+        }
+
+        display = null;
+        realm = null;
+        disposeDisplay = false;
+    }
+
+    private void ensureDisplayRealm()
+    {
+        if (display == null || display.isDisposed())
+        {
+            Display current = Display.getCurrent();
+            if (current != null && !current.isDisposed())
+            {
+                display = current;
+                disposeDisplay = false;
+            }
+            else
+            {
+                display = new Display();
+                disposeDisplay = true;
+            }
+        }
+
+        if (realm == null)
+            realm = DisplayRealm.getRealm(display);
+    }
+
+    private void runWithDisplayRealm(ThrowingRunnable runnable) throws Exception
     {
         ensureDisplayRealm();
 
