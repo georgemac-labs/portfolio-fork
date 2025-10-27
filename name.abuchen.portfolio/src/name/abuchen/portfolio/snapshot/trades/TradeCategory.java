@@ -465,11 +465,4 @@ public class TradeCategory
         this.calculated = true;
     }
 
-    public List<TradeCategory> sortByProfitLoss()
-    {
-        List<TradeCategory> answer = new ArrayList<>();
-        answer.add(this);
-        Collections.sort(answer, (c1, c2) -> c2.getTotalProfitLoss().compareTo(c1.getTotalProfitLoss()));
-        return answer;
-    }
 }
