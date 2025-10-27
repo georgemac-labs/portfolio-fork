@@ -186,6 +186,8 @@ public class TradeDetailsView extends AbstractFinanceView
     private TradesTableViewer table;
     private Taxonomy taxonomy;
 
+    private Input currentData;
+
     @Override
     protected String getDefaultTitle()
     {
@@ -352,7 +354,7 @@ public class TradeDetailsView extends AbstractFinanceView
                 search.addModifyListener(e -> {
                     var filterText = search.getText().trim();
                     searchPattern = compileSearchPattern(filterText);
-                    update();
+                    applyFilters(currentData);
                 });
 
                 return search;
@@ -544,7 +546,38 @@ public class TradeDetailsView extends AbstractFinanceView
 
     private void update()
     {
-        var data = usePreselectedTrades.isTrue() ? input : collectAllTrades();
+        currentData = usePreselectedTrades.isTrue() ? input : collectAllTrades();
+
+        applyFilters(currentData);
+
+        var toolBar = getToolBarManager();
+
+        if (currentData != null && !currentData.getErrors().isEmpty())
+        {
+            if (toolBar.find(ID_WARNING_TOOL_ITEM) == null)
+            {
+                Action warning = new SimpleAction(Messages.MsgErrorTradeCollectionWithErrors,
+                                Images.ERROR_NOTICE.descriptor(),
+                                a -> MessageDialog.openError(Display.getDefault().getActiveShell(), Messages.LabelError,
+                                                currentData.getErrors().stream().map(TradeCollectorException::getMessage)
+                                                                .collect(Collectors.joining("\n\n")))); //$NON-NLS-1$
+                warning.setId(ID_WARNING_TOOL_ITEM);
+                toolBar.insert(0, new ActionContributionItem(warning));
+                toolBar.update(true);
+            }
+        }
+        else
+        {
+            if (toolBar.remove(ID_WARNING_TOOL_ITEM) != null)
+                toolBar.update(true);
+        }
+
+    }
+
+    private void applyFilters(Input data)
+    {
+        if (table == null || data == null)
+            return;
 
         var trades = filterTrades(data);
 
@@ -557,28 +590,6 @@ public class TradeDetailsView extends AbstractFinanceView
         else
         {
             table.setInput(trades);
-        }
-
-        var toolBar = getToolBarManager();
-
-        if (!data.getErrors().isEmpty())
-        {
-            if (toolBar.find(ID_WARNING_TOOL_ITEM) == null)
-            {
-                Action warning = new SimpleAction(Messages.MsgErrorTradeCollectionWithErrors,
-                                Images.ERROR_NOTICE.descriptor(),
-                                a -> MessageDialog.openError(Display.getDefault().getActiveShell(), Messages.LabelError,
-                                                data.getErrors().stream().map(TradeCollectorException::getMessage)
-                                                                .collect(Collectors.joining("\n\n")))); //$NON-NLS-1$
-                warning.setId(ID_WARNING_TOOL_ITEM);
-                toolBar.insert(0, new ActionContributionItem(warning));
-                toolBar.update(true);
-            }
-        }
-        else
-        {
-            if (toolBar.remove(ID_WARNING_TOOL_ITEM) != null)
-                toolBar.update(true);
         }
 
         refreshViewer();
