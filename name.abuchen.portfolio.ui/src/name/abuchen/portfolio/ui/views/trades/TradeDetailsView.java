@@ -698,14 +698,22 @@ public class TradeDetailsView extends AbstractFinanceView
             return "<trade without security>"; //$NON-NLS-1$
 
         var descriptors = new ArrayList<String>();
-        if (!TextUtil.isEmpty(security.getName()))
-            descriptors.add(security.getName());
-        if (!TextUtil.isEmpty(security.getTickerSymbol()))
-            descriptors.add(security.getTickerSymbol());
-        if (!TextUtil.isEmpty(security.getIsin()))
-            descriptors.add(security.getIsin());
-        if (!TextUtil.isEmpty(security.getWkn()))
-            descriptors.add(security.getWkn());
+
+        var name = security.getName();
+        if (name != null && !name.isBlank())
+            descriptors.add(name);
+
+        var ticker = security.getTickerSymbol();
+        if (ticker != null && !ticker.isBlank())
+            descriptors.add(ticker);
+
+        var isin = security.getIsin();
+        if (isin != null && !isin.isBlank())
+            descriptors.add(isin);
+
+        var wkn = security.getWkn();
+        if (wkn != null && !wkn.isBlank())
+            descriptors.add(wkn);
         if (descriptors.isEmpty())
             descriptors.add(String.format("Security@%s", Integer.valueOf(System.identityHashCode(security)))); //$NON-NLS-1$
 

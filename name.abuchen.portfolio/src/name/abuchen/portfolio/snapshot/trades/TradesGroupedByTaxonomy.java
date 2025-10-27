@@ -203,7 +203,7 @@ public class TradesGroupedByTaxonomy
                         .collect(MoneyCollectors.sum(converter.getTermCurrency()));
     }
 
-    /* package */ TradeCategory byClassification(Classification classification)
+    public TradeCategory byClassification(Classification classification)
     {
         for (TradeCategory category : categories)
         {
