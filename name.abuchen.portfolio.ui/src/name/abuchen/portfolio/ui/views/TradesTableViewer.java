@@ -530,9 +530,9 @@ public class TradesTableViewer
         support.addColumn(column);
 
         Function<Trade, Money> averagePurchasePriceMovingAverage = t -> {
-            Money entryValue = t.getEntryValueMovingAverage();
-            return Money.of(entryValue.getCurrencyCode(),
-                            Math.round(entryValue.getAmount() / (double) t.getShares() * Values.Share.factor()));
+            Money movingAverageEntry = t.getEntryValueMovingAverage();
+            return Money.of(movingAverageEntry.getCurrencyCode(), Math.round(movingAverageEntry.getAmount()
+                            / (double) t.getShares() * Values.Share.factor()));
         };
 
         column = new Column("entryvalue-mvavg-pershare", //$NON-NLS-1$
@@ -770,7 +770,7 @@ public class TradesTableViewer
                 return instrumentCurrency.apply(element);
             }
         }));
-        column.setSorter(ColumnViewerSorter.create(instrumentCurrency));
+        column.setSorter(ColumnViewerSorter.createIgnoreCase(instrumentCurrency));
         column.setVisible(false);
         support.addColumn(column);
 
