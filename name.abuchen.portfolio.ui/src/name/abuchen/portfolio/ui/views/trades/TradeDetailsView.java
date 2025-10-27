@@ -352,7 +352,7 @@ public class TradeDetailsView extends AbstractFinanceView
                 search.addModifyListener(e -> {
                     var filterText = search.getText().trim();
                     searchPattern = compileSearchPattern(filterText);
-                    table.getTableViewer().refresh();
+                    update();
                 });
 
                 return search;
@@ -437,15 +437,6 @@ public class TradeDetailsView extends AbstractFinanceView
         table = new TradesTableViewer(this);
 
         Control control = table.createViewControl(parent, TradesTableViewer.ViewMode.MULTIPLE_SECURITES);
-
-        table.getTableViewer().addFilter(new ViewerFilter()
-        {
-            @Override
-            public boolean select(Viewer viewer, Object parentElement, Object element)
-            {
-                return matchesSearch(element);
-            }
-        });
 
         table.getTableViewer().addSelectionChangedListener(event -> {
             var structured = event.getStructuredSelection();
