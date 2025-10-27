@@ -6,10 +6,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import name.abuchen.portfolio.Messages;
@@ -78,7 +78,8 @@ public class TradesGroupedByTaxonomy
 
                 Security security = (Security) vehicle;
 
-                // find all trades for this security and add them to the category
+                // find all trades for this security and add them to the
+                // category
                 for (Trade trade : allTrades)
                 {
                     if (trade.getSecurity().equals(security))
@@ -93,7 +94,8 @@ public class TradesGroupedByTaxonomy
                                         : classification;
 
                         TradeCategory category = keyToCategory.computeIfAbsent(key,
-                                        k -> multiCurrencyMode ? new TradeCategory(classification, converter, currencyCode)
+                                        k -> multiCurrencyMode
+                                                        ? new TradeCategory(classification, converter, currencyCode)
                                                         : new TradeCategory(classification, converter));
 
                         double weight = assignment.getWeight() / (double) Classification.ONE_HUNDRED_PERCENT;
@@ -108,7 +110,8 @@ public class TradesGroupedByTaxonomy
         categories.addAll(keyToCategory.values().stream().filter(c -> c.getTotalWeight() > 0)
                         .collect(Collectors.toList()));
 
-        // sort by classification rank, id, and currency to keep multi-currency clones deterministic
+        // sort by classification rank, id, and currency to keep multi-currency
+        // clones deterministic
         Collections.sort(categories,
                         Comparator.comparingInt((TradeCategory c) -> c.getClassification().getRank())
                                         .thenComparing(c -> c.getClassification().getId())
@@ -138,8 +141,7 @@ public class TradesGroupedByTaxonomy
                 String currencyCode = trade.getProfitLoss().getCurrencyCode();
 
                 TradeCategory unassignedCategory = unassignedCategories.computeIfAbsent(currencyCode,
-                                cc -> multiCurrencyMode
-                                                ? new TradeCategory(unassignedClassification, converter, cc)
+                                cc -> multiCurrencyMode ? new TradeCategory(unassignedClassification, converter, cc)
                                                 : new TradeCategory(unassignedClassification, converter));
 
                 double unassignedWeight = (Classification.ONE_HUNDRED_PERCENT - assignedWeight)
@@ -177,30 +179,26 @@ public class TradesGroupedByTaxonomy
 
     public Money getTotalProfitLoss()
     {
-        return allTrades.stream()
-                        .map(trade -> {
-                            Money pnl = trade.getProfitLoss();
-                            if (pnl == null)
-                                return Money.of(converter.getTermCurrency(), 0);
+        return allTrades.stream().map(trade -> {
+            Money pnl = trade.getProfitLoss();
+            if (pnl == null)
+                return Money.of(converter.getTermCurrency(), 0);
 
-                            LocalDate date = trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
-                            return pnl.with(converter.at(date));
-                        })
-                        .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+            LocalDate date = trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+            return pnl.with(converter.at(date));
+        }).collect(MoneyCollectors.sum(converter.getTermCurrency()));
     }
 
     public Money getTotalProfitLossWithoutTaxesAndFees()
     {
-        return allTrades.stream()
-                        .map(trade -> {
-                            Money pnl = trade.getProfitLossWithoutTaxesAndFees();
-                            if (pnl == null)
-                                return Money.of(converter.getTermCurrency(), 0);
+        return allTrades.stream().map(trade -> {
+            Money pnl = trade.getProfitLossWithoutTaxesAndFees();
+            if (pnl == null)
+                return Money.of(converter.getTermCurrency(), 0);
 
-                            LocalDate date = trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
-                            return pnl.with(converter.at(date));
-                        })
-                        .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+            LocalDate date = trade.getEnd().map(LocalDate::from).orElse(LocalDate.now());
+            return pnl.with(converter.at(date));
+        }).collect(MoneyCollectors.sum(converter.getTermCurrency()));
     }
 
     /* package */ TradeCategory byClassification(Classification classification)

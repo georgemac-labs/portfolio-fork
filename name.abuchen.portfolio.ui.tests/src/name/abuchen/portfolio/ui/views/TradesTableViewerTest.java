@@ -26,14 +26,14 @@ import name.abuchen.portfolio.model.Taxonomy;
 import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.trades.Trade;
-import name.abuchen.portfolio.snapshot.trades.TradeCollector;
 import name.abuchen.portfolio.snapshot.trades.TradeCategory;
+import name.abuchen.portfolio.snapshot.trades.TradeCollector;
 import name.abuchen.portfolio.snapshot.trades.TradesGroupedByTaxonomy;
-import name.abuchen.portfolio.ui.views.trades.TradeElement;
 import name.abuchen.portfolio.ui.util.viewers.Column;
 import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.TouchClientListener;
 import name.abuchen.portfolio.ui.util.viewers.MoneyColorLabelProvider;
 import name.abuchen.portfolio.ui.views.columns.NameColumn;
+import name.abuchen.portfolio.ui.views.trades.TradeElement;
 
 @SuppressWarnings("nls")
 public class TradesTableViewerTest
@@ -145,8 +145,8 @@ public class TradesTableViewerTest
         Trade trade = trades.get(0);
 
         TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
-        TradeCategory category = grouped.asList().stream()
-                        .filter(c -> c.getTaxonomyClassification() == equities).findFirst().orElse(null);
+        TradeCategory category = grouped.asList().stream().filter(c -> c.getTaxonomyClassification() == equities)
+                        .findFirst().orElse(null);
 
         TradeElement tradeElement = new TradeElement(trade, 1, 1.0);
         TradeElement categoryElement = new TradeElement(category, 0);
@@ -234,7 +234,8 @@ public class TradesTableViewerTest
         // Create column directly without needing the full viewer infrastructure
         Column column = new NameColumn(client);
 
-        // Track whether the refresh listener is called (simulating viewer refresh)
+        // Track whether the refresh listener is called (simulating viewer
+        // refresh)
         AtomicBoolean refreshCalled = new AtomicBoolean(false);
         column.getEditingSupport().addListener((element, newValue, oldValue) -> refreshCalled.set(true));
 
@@ -243,7 +244,8 @@ public class TradesTableViewerTest
         // Execute the edit
         column.getEditingSupport().setValue(element, "Renamed Security");
 
-        // Verify the security was renamed and the refresh listener was triggered
+        // Verify the security was renamed and the refresh listener was
+        // triggered
         assertThat(security.getName(), is("Renamed Security"));
         assertThat(refreshCalled.get(), is(true));
     }

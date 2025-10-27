@@ -11,11 +11,11 @@ import java.util.stream.Collectors;
 
 import org.junit.Test;
 
-import name.abuchen.portfolio.junit.TestCurrencyConverter;
 import name.abuchen.portfolio.junit.AccountBuilder;
 import name.abuchen.portfolio.junit.PortfolioBuilder;
 import name.abuchen.portfolio.junit.SecurityBuilder;
 import name.abuchen.portfolio.junit.TaxonomyBuilder;
+import name.abuchen.portfolio.junit.TestCurrencyConverter;
 import name.abuchen.portfolio.model.Account;
 import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.model.Client;
@@ -77,16 +77,14 @@ public class TradesGroupedByTaxonomyTest
         assertThat(allTrades.size(), is(2));
 
         // group by taxonomy
-        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, allTrades,
-                        new TestCurrencyConverter());
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, allTrades, new TestCurrencyConverter());
 
         assertThat(grouped.asList().size(), is(2));
 
         TradeCategory stocksCategory = grouped.byClassification(stocks);
         assertThat(stocksCategory, notNullValue());
         assertThat(stocksCategory.getTradeCount(), is(1L));
-        assertThat(stocksCategory.getTotalProfitLoss(),
-                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
+        assertThat(stocksCategory.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
 
         TradeCategory bondsCategory = grouped.byClassification(bonds);
         assertThat(bondsCategory, notNullValue());
@@ -117,14 +115,10 @@ public class TradesGroupedByTaxonomyTest
                         .addTo(client);
 
         new PortfolioBuilder(account) //
-                        .buy(parentSecurity, "2020-01-01", Values.Share.factorize(100),
-                                        Values.Amount.factorize(10000)) //
-                        .sell(parentSecurity, "2020-02-01", Values.Share.factorize(100),
-                                        Values.Amount.factorize(11000)) //
-                        .buy(childSecurity, "2020-01-01", Values.Share.factorize(100),
-                                        Values.Amount.factorize(10000)) //
-                        .sell(childSecurity, "2020-02-01", Values.Share.factorize(100),
-                                        Values.Amount.factorize(10400)) //
+                        .buy(parentSecurity, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(parentSecurity, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .buy(childSecurity, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(childSecurity, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(10400)) //
                         .addTo(client);
 
         Taxonomy taxonomy = new TaxonomyBuilder() //
@@ -153,11 +147,9 @@ public class TradesGroupedByTaxonomyTest
 
         TradeCategory growthCategory = grouped.byClassification(growth);
         assertThat(growthCategory, notNullValue());
-        assertThat(growthCategory.getTotalProfitLoss(),
-                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(400))));
+        assertThat(growthCategory.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(400))));
 
-        assertThat(grouped.getTotalProfitLoss(),
-                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1400))));
+        assertThat(grouped.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1400))));
     }
 
     @Test
@@ -257,8 +249,7 @@ public class TradesGroupedByTaxonomyTest
 
         TradeCategory techCategory = grouped.byClassification(tech);
         assertThat(techCategory, notNullValue());
-        assertThat(techCategory.getTotalProfitLoss(),
-                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(250))));
+        assertThat(techCategory.getTotalProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(250))));
 
         TradeCategory unassignedCategory = grouped.asList().stream() //
                         .filter(c -> Classification.UNASSIGNED_ID.equals(c.getClassification().getId())) //

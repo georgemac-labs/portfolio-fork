@@ -353,8 +353,10 @@ public class TradeCategory
                     double collateralReleased = releaseCollateral(collateralLots, sharesToCover);
                     remainingCollateral = Math.max(0, remainingCollateral - collateralReleased);
 
-                    // For short trades, the closing purchase 'amount' is negative.
-                    // The cash flow is the collateral returned minus the cost to close.
+                    // For short trades, the closing purchase 'amount' is
+                    // negative.
+                    // The cash flow is the collateral returned minus the cost
+                    // to close.
                     amount = collateralReleased - amount;
                 }
 
@@ -366,8 +368,7 @@ public class TradeCategory
             if (!trade.isClosed())
             {
                 LocalDate date = LocalDate.now();
-                double amount = trade.getExitValue().with(converter.at(date)).getAmount()
-                                / Values.Amount.divider();
+                double amount = trade.getExitValue().with(converter.at(date)).getAmount() / Values.Amount.divider();
                 amount *= weight;
                 if (!isLong)
                     amount = remainingCollateral - amount;

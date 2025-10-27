@@ -13,20 +13,20 @@ import java.util.Objects;
 
 import org.junit.Test;
 
-import name.abuchen.portfolio.junit.TestCurrencyConverter;
 import name.abuchen.portfolio.junit.AccountBuilder;
 import name.abuchen.portfolio.junit.PortfolioBuilder;
 import name.abuchen.portfolio.junit.SecurityBuilder;
 import name.abuchen.portfolio.junit.TaxonomyBuilder;
+import name.abuchen.portfolio.junit.TestCurrencyConverter;
 import name.abuchen.portfolio.math.IRR;
 import name.abuchen.portfolio.model.Account;
 import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Portfolio;
-import name.abuchen.portfolio.model.Security;
-import name.abuchen.portfolio.model.TransactionPair;
-import name.abuchen.portfolio.model.Taxonomy;
 import name.abuchen.portfolio.model.PortfolioTransaction;
+import name.abuchen.portfolio.model.Security;
+import name.abuchen.portfolio.model.Taxonomy;
+import name.abuchen.portfolio.model.TransactionPair;
 import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.Values;
@@ -204,8 +204,7 @@ public class TradeCategoryTest
 
         Trade shortTrade = trades.get(0);
         assertThat(shortTrade.isLong(), is(false));
-        assertThat(shortTrade.getProfitLoss(),
-                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
+        assertThat(shortTrade.getProfitLoss(), is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(1000))));
 
         TradeCategory category = new TradeCategory(shorts, new TestCurrencyConverter());
         category.addTrade(shortTrade, 1.0);

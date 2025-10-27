@@ -47,8 +47,8 @@ import name.abuchen.portfolio.snapshot.trades.TradeTotals;
 import name.abuchen.portfolio.snapshot.trades.TradesGroupedByTaxonomy;
 import name.abuchen.portfolio.ui.Images;
 import name.abuchen.portfolio.ui.Messages;
-import name.abuchen.portfolio.ui.UIConstants;
 import name.abuchen.portfolio.ui.PortfolioPlugin;
+import name.abuchen.portfolio.ui.UIConstants;
 import name.abuchen.portfolio.ui.editor.AbstractFinanceView;
 import name.abuchen.portfolio.ui.selection.SecuritySelection;
 import name.abuchen.portfolio.ui.selection.SelectionService;
@@ -57,7 +57,6 @@ import name.abuchen.portfolio.ui.util.DropDown;
 import name.abuchen.portfolio.ui.util.LabelOnly;
 import name.abuchen.portfolio.ui.util.SimpleAction;
 import name.abuchen.portfolio.ui.util.TableViewerCSVExporter;
-import name.abuchen.portfolio.util.TextUtil;
 import name.abuchen.portfolio.ui.views.SecurityContextMenu;
 import name.abuchen.portfolio.ui.views.TradesTableViewer;
 import name.abuchen.portfolio.ui.views.panes.HistoricalPricesPane;
@@ -66,6 +65,7 @@ import name.abuchen.portfolio.ui.views.panes.SecurityEventsPane;
 import name.abuchen.portfolio.ui.views.panes.SecurityPriceChartPane;
 import name.abuchen.portfolio.ui.views.panes.TransactionsPane;
 import name.abuchen.portfolio.util.Interval;
+import name.abuchen.portfolio.util.TextUtil;
 
 public class TradeDetailsView extends AbstractFinanceView
 {
@@ -190,10 +190,9 @@ public class TradeDetailsView extends AbstractFinanceView
         private final boolean hideTotalsAtTheTopJob;
         private final boolean hideTotalsAtTheBottomJob;
 
-        UpdateTradesJob(Input preselectedInput, boolean useSecCurrency, CurrencyConverter converter,
-                        boolean onlyOpen, boolean onlyClosed, boolean onlyProfitable, boolean onlyLossMaking,
-                        Pattern filterPattern, Taxonomy taxonomy, boolean hideTotalsAtTheTop,
-                        boolean hideTotalsAtTheBottom)
+        UpdateTradesJob(Input preselectedInput, boolean useSecCurrency, CurrencyConverter converter, boolean onlyOpen,
+                        boolean onlyClosed, boolean onlyProfitable, boolean onlyLossMaking, Pattern filterPattern,
+                        Taxonomy taxonomy, boolean hideTotalsAtTheTop, boolean hideTotalsAtTheBottom)
         {
             super(Messages.LabelTrades);
             this.preselectedInput = preselectedInput;
@@ -244,7 +243,8 @@ public class TradeDetailsView extends AbstractFinanceView
                 List<?> finalTableInput;
                 if (jobTaxonomy != null)
                 {
-                    TradesGroupedByTaxonomy groupedTrades = new TradesGroupedByTaxonomy(jobTaxonomy, trades, jobConverter);
+                    TradesGroupedByTaxonomy groupedTrades = new TradesGroupedByTaxonomy(jobTaxonomy, trades,
+                                    jobConverter);
                     finalTableInput = flattenToElements(groupedTrades, hideTotalsAtTheTopJob, hideTotalsAtTheBottomJob);
                 }
                 else
@@ -645,7 +645,7 @@ public class TradeDetailsView extends AbstractFinanceView
             Object element = selection.getFirstElement();
             Trade trade = element instanceof Trade ? (Trade) element
                             : element instanceof TradeElement ? ((TradeElement) element).getTrade() : null;
-                            
+
             if (trade != null)
                 new SecurityContextMenu(TradeDetailsView.this).handleEditKey(e, trade.getSecurity());
         }));
@@ -737,7 +737,8 @@ public class TradeDetailsView extends AbstractFinanceView
                             Images.ERROR_NOTICE.descriptor(), a -> {
                                 String message = errors.stream().map(TradeCollectorException::getMessage)
                                                 .collect(Collectors.joining("\n\n")); //$NON-NLS-1$
-                                MessageDialog.openError(Display.getDefault().getActiveShell(), Messages.LabelError, message);
+                                MessageDialog.openError(Display.getDefault().getActiveShell(), Messages.LabelError,
+                                                message);
                             });
             warning.setId(ID_WARNING_TOOL_ITEM);
             toolBar.insert(0, new ActionContributionItem(warning));
@@ -809,9 +810,9 @@ public class TradeDetailsView extends AbstractFinanceView
 
     /**
      * Flattens the taxonomy-grouped trades into a list of TradeElements for
-     * display in the table. Category rows are interleaved with trade rows.
-     * Uses sortOrder to keep categories as headers - category gets sortOrder N,
-     * then all its trades get sortOrder N+1 (same for all trades in that category).
+     * display in the table. Category rows are interleaved with trade rows. Uses
+     * sortOrder to keep categories as headers - category gets sortOrder N, then
+     * all its trades get sortOrder N+1 (same for all trades in that category).
      */
     private List<TradeElement> flattenToElements(TradesGroupedByTaxonomy groupedTrades, boolean hideTotalsAtTheTop,
                     boolean hideTotalsAtTheBottom)

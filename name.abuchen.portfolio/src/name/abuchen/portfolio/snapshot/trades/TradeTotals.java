@@ -46,17 +46,14 @@ public class TradeTotals
 
     private Money sumMoney(Function<Trade, Money> extractor, Function<Trade, LocalDateTime> dateExtractor)
     {
-        return trades.stream()
-                        .map(trade -> {
-                            Money value = extractor.apply(trade);
-                            if (value == null)
-                                return Money.of(converter.getTermCurrency(), 0);
+        return trades.stream().map(trade -> {
+            Money value = extractor.apply(trade);
+            if (value == null)
+                return Money.of(converter.getTermCurrency(), 0);
 
-                            LocalDateTime date = Objects.requireNonNullElseGet(dateExtractor.apply(trade),
-                                            LocalDateTime::now);
-                            return value.with(converter.at(date));
-                        })
-                        .collect(MoneyCollectors.sum(converter.getTermCurrency()));
+            LocalDateTime date = Objects.requireNonNullElseGet(dateExtractor.apply(trade), LocalDateTime::now);
+            return value.with(converter.at(date));
+        }).collect(MoneyCollectors.sum(converter.getTermCurrency()));
     }
 
     public String getCurrencyCode()
@@ -143,8 +140,8 @@ public class TradeTotals
     {
         if (totalShares == 0)
             return null;
-        long amount = Math.round(
-                        totalEntryValueMovingAverage.getAmount() / (double) totalShares * Values.Share.factor());
+        long amount = Math
+                        .round(totalEntryValueMovingAverage.getAmount() / (double) totalShares * Values.Share.factor());
         return Money.of(totalEntryValueMovingAverage.getCurrencyCode(), amount);
     }
 

@@ -159,8 +159,8 @@ public class Trade implements Adaptable
         List<Double> values = new ArrayList<>();
 
         // need mutable variable within lambda below, using array workaround
-        double[] totalCollateral = {0};
-        double[] remainingCollateral = {0};
+        double[] totalCollateral = { 0 };
+        double[] remainingCollateral = { 0 };
         Deque<CollateralLot> collateralLots = new ArrayDeque<>();
 
         transactions.stream().forEach(t -> {

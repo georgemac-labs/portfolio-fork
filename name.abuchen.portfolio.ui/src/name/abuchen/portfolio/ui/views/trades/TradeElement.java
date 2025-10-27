@@ -12,9 +12,9 @@ import name.abuchen.portfolio.snapshot.trades.TradeCategory;
 import name.abuchen.portfolio.snapshot.trades.TradeTotals;
 
 /**
- * Wrapper element for displaying trades in a flat table with taxonomy
- * grouping. Can represent either a category (taxonomy classification) or an
- * individual trade.
+ * Wrapper element for displaying trades in a flat table with taxonomy grouping.
+ * Can represent either a category (taxonomy classification) or an individual
+ * trade.
  */
 public class TradeElement implements Adaptable
 {

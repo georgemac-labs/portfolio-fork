@@ -489,8 +489,7 @@ public class TradesTableViewer
         column.setMenuLabel(Messages.ColumnEntryValue + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         var entryValueMovingAverage = tradeAggregateValue(
                         (trade, element) -> applyWeight(trade.getEntryValueMovingAverage(), getTradeWeight(element)),
-                        TradeCategory::getTotalEntryValueMovingAverage,
-                        TradeTotals::getTotalEntryValueMovingAverage);
+                        TradeCategory::getTotalEntryValueMovingAverage, TradeTotals::getTotalEntryValueMovingAverage);
         column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
         {
             @Override
@@ -535,8 +534,8 @@ public class TradesTableViewer
             Money movingAverageEntry = t.getEntryValueMovingAverage();
             if (movingAverageEntry == null)
                 return null;
-            return Money.of(movingAverageEntry.getCurrencyCode(), Math.round(movingAverageEntry.getAmount()
-                            / (double) t.getShares() * Values.Share.factor()));
+            return Money.of(movingAverageEntry.getCurrencyCode(), Math
+                            .round(movingAverageEntry.getAmount() / (double) t.getShares() * Values.Share.factor()));
         };
 
         column = new Column("entryvalue-mvavg-pershare", //$NON-NLS-1$
@@ -613,7 +612,8 @@ public class TradesTableViewer
         column.setGroupLabel(Messages.ColumnProfitLoss);
         column.setMenuLabel(Messages.ColumnGrossProfitLoss + " (" + CostMethod.FIFO.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         var grossProfitLoss = tradeAggregateValue(
-                        (trade, element) -> applyWeight(trade.getProfitLossWithoutTaxesAndFees(), getTradeWeight(element)),
+                        (trade, element) -> applyWeight(trade.getProfitLossWithoutTaxesAndFees(),
+                                        getTradeWeight(element)),
                         TradeCategory::getTotalProfitLossWithoutTaxesAndFees,
                         TradeTotals::getTotalProfitLossWithoutTaxesAndFees);
         column.setLabelProvider(withBoldFont(new MoneyColorLabelProvider(grossProfitLoss, view.getClient())));
@@ -628,8 +628,7 @@ public class TradesTableViewer
         column.setMenuLabel(Messages.ColumnProfitLoss + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         var profitLossMovingAverage = tradeAggregateValue(
                         (trade, element) -> applyWeight(trade.getProfitLossMovingAverage(), getTradeWeight(element)),
-                        TradeCategory::getTotalProfitLossMovingAverage,
-                        TradeTotals::getTotalProfitLossMovingAverage);
+                        TradeCategory::getTotalProfitLossMovingAverage, TradeTotals::getTotalProfitLossMovingAverage);
         column.setLabelProvider(withBoldFont(new MoneyColorLabelProvider(profitLossMovingAverage, view.getClient())));
         column.setSorter(ColumnViewerSorter.create(toComparable(profitLossMovingAverage)));
         column.setVisible(false);
@@ -645,7 +644,8 @@ public class TradesTableViewer
                                         getTradeWeight(element)),
                         TradeCategory::getTotalProfitLossMovingAverageWithoutTaxesAndFees,
                         TradeTotals::getTotalProfitLossMovingAverageWithoutTaxesAndFees);
-        column.setLabelProvider(withBoldFont(new MoneyColorLabelProvider(grossProfitLossMovingAverage, view.getClient())));
+        column.setLabelProvider(
+                        withBoldFont(new MoneyColorLabelProvider(grossProfitLossMovingAverage, view.getClient())));
         column.setSorter(ColumnViewerSorter.create(toComparable(grossProfitLossMovingAverage)));
         column.setVisible(false);
         support.addColumn(column);
@@ -694,7 +694,8 @@ public class TradesTableViewer
         column.setGroupLabel(Messages.ColumnReturn);
         column.setMenuLabel(Messages.ColumnReturn + " (" + CostMethod.MOVING_AVERAGE.getLabel() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         Function<Object, Double> returnMovingAverage = TradesTableViewer::getReturnMovingAverageValue;
-        column.setLabelProvider(withBoldFont(new NumberColorLabelProvider<>(Values.Percent2, returnMovingAverage::apply)));
+        column.setLabelProvider(
+                        withBoldFont(new NumberColorLabelProvider<>(Values.Percent2, returnMovingAverage::apply)));
         column.setSorter(ColumnViewerSorter.create(toComparable(returnMovingAverage)));
         column.setVisible(false);
         support.addColumn(column);
