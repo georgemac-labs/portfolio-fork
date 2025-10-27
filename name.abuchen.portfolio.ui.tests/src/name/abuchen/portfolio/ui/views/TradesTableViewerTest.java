@@ -88,22 +88,25 @@ public class TradesTableViewerTest
     @AfterClass
     public static void resetPortfolioPlugin() throws Exception
     {
-        if (testPlugin != null)
+        synchronized (TradesTableViewerTest.class)
         {
-            var instanceField = PortfolioPlugin.class.getDeclaredField("instance"); //$NON-NLS-1$
-            instanceField.setAccessible(true);
-            instanceField.set(null, previousPlugin);
-            testPlugin = null;
-        }
+            if (testPlugin != null)
+            {
+                var instanceField = PortfolioPlugin.class.getDeclaredField("instance"); //$NON-NLS-1$
+                instanceField.setAccessible(true);
+                instanceField.set(null, previousPlugin);
+                testPlugin = null;
+            }
 
-        if (disposeDisplay && display != null && !display.isDisposed())
-        {
-            display.dispose();
-        }
+            if (disposeDisplay && display != null && !display.isDisposed())
+            {
+                display.dispose();
+            }
 
-        display = null;
-        realm = null;
-        disposeDisplay = false;
+            display = null;
+            realm = null;
+            disposeDisplay = false;
+        }
     }
 
     private static void ensurePreferenceStore(PortfolioPlugin plugin) throws Exception
@@ -116,23 +119,26 @@ public class TradesTableViewerTest
 
     private static void ensureDisplayRealm()
     {
-        if (display == null || display.isDisposed())
+        synchronized (TradesTableViewerTest.class)
         {
-            Display current = Display.getCurrent();
-            if (current != null && !current.isDisposed())
+            if (display == null || display.isDisposed())
             {
-                display = current;
-                disposeDisplay = false;
+                Display current = Display.getCurrent();
+                if (current != null && !current.isDisposed())
+                {
+                    display = current;
+                    disposeDisplay = false;
+                }
+                else
+                {
+                    display = new Display();
+                    disposeDisplay = true;
+                }
             }
-            else
-            {
-                display = new Display();
-                disposeDisplay = true;
-            }
-        }
 
-        if (realm == null)
-            realm = DisplayRealm.getRealm(display);
+            if (realm == null)
+                realm = DisplayRealm.getRealm(display);
+        }
     }
 
     private static void runWithDisplayRealm(ThrowingRunnable runnable) throws Exception
@@ -242,98 +248,102 @@ public class TradesTableViewerTest
     @Test
     public void categoryAndTradeRowsShareCurrencyFormattingInSecurityCurrencyMode() throws Exception
     {
-        Client client = new Client();
-        client.setBaseCurrency(CurrencyUnit.EUR);
+        runWithDisplayRealm(() -> {
+            Client client = new Client();
+            client.setBaseCurrency(CurrencyUnit.EUR);
 
-        Security usdSecurity = new SecurityBuilder(CurrencyUnit.USD) //
-                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
-                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
-                        .addTo(client);
+            Security usdSecurity = new SecurityBuilder(CurrencyUnit.USD) //
+                            .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                            .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                            .addTo(client);
 
-        Account account = new AccountBuilder() //
-                        .deposit_("2015-01-01", Values.Amount.factorize(200000)) //
-                        .addTo(client);
+            Account account = new AccountBuilder() //
+                            .deposit_("2015-01-01", Values.Amount.factorize(200000)) //
+                            .addTo(client);
 
-        new PortfolioBuilder(account) //
-                        .buy(usdSecurity, "2015-01-02", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
-                        .sell(usdSecurity, "2015-01-09", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
-                        .addTo(client);
+            new PortfolioBuilder(account) //
+                            .buy(usdSecurity, "2015-01-02", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                            .sell(usdSecurity, "2015-01-09", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                            .addTo(client);
 
-        Taxonomy taxonomy = new TaxonomyBuilder() //
-                        .addClassification("equities") //
-                        .addTo(client);
+            Taxonomy taxonomy = new TaxonomyBuilder() //
+                            .addClassification("equities") //
+                            .addTo(client);
 
-        Classification equities = taxonomy.getClassificationById("equities");
-        equities.addAssignment(new Classification.Assignment(usdSecurity));
+            Classification equities = taxonomy.getClassificationById("equities");
+            equities.addAssignment(new Classification.Assignment(usdSecurity));
 
-        TestCurrencyConverter converter = new TestCurrencyConverter(CurrencyUnit.EUR);
-        TradeCollector collector = new TradeCollector(client, converter.with(CurrencyUnit.USD));
+            TestCurrencyConverter converter = new TestCurrencyConverter(CurrencyUnit.EUR);
+            TradeCollector collector = new TradeCollector(client, converter.with(CurrencyUnit.USD));
 
-        List<Trade> trades = collector.collect(usdSecurity);
-        Trade trade = trades.get(0);
+            List<Trade> trades = collector.collect(usdSecurity);
+            Trade trade = trades.get(0);
 
-        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
-        TradeCategory category = grouped.asList().stream()
-                        .filter(c -> c.getTaxonomyClassification() == equities).findFirst().orElse(null);
+            TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
+            TradeCategory category = grouped.asList().stream()
+                            .filter(c -> c.getTaxonomyClassification() == equities).findFirst().orElse(null);
 
-        TradeElement tradeElement = new TradeElement(trade, 1, 1.0);
-        TradeElement categoryElement = new TradeElement(category, 0);
+            TradeElement tradeElement = new TradeElement(trade, 1, 1.0);
+            TradeElement categoryElement = new TradeElement(category, 0);
 
-        MoneyColorLabelProvider provider = new MoneyColorLabelProvider(element -> {
-            if (element instanceof TradeElement te)
-            {
-                if (te.isTrade())
-                    return te.getTrade().getProfitLoss();
-                if (te.isCategory())
-                    return te.getCategory().getTotalProfitLoss();
-            }
-            return null;
-        }, client);
+            MoneyColorLabelProvider provider = new MoneyColorLabelProvider(element -> {
+                if (element instanceof TradeElement te)
+                {
+                    if (te.isTrade())
+                        return te.getTrade().getProfitLoss();
+                    if (te.isCategory())
+                        return te.getCategory().getTotalProfitLoss();
+                }
+                return null;
+            }, client);
 
-        String tradeText = provider.getText(tradeElement);
-        String categoryText = provider.getText(categoryElement);
+            String tradeText = provider.getText(tradeElement);
+            String categoryText = provider.getText(categoryElement);
 
-        assertThat(category, notNullValue());
-        assertThat(tradeText, notNullValue());
-        assertThat(categoryText, notNullValue());
-        assertThat(tradeText, is(categoryText));
-        assertThat(tradeText, containsString(CurrencyUnit.USD));
+            assertThat(category, notNullValue());
+            assertThat(tradeText, notNullValue());
+            assertThat(categoryText, notNullValue());
+            assertThat(tradeText, is(categoryText));
+            assertThat(tradeText, containsString(CurrencyUnit.USD));
+        });
     }
 
     @Test
     public void renamingSecurityTouchesClient() throws Exception
     {
-        Client client = new Client();
+        runWithDisplayRealm(() -> {
+            Client client = new Client();
 
-        Security security = new SecurityBuilder() //
-                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
-                        .addPrice("2020-02-01", Values.Quote.factorize(110)) //
-                        .addTo(client);
-        security.setName("Original");
+            Security security = new SecurityBuilder() //
+                            .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                            .addPrice("2020-02-01", Values.Quote.factorize(110)) //
+                            .addTo(client);
+            security.setName("Original");
 
-        Account account = new AccountBuilder() //
-                        .deposit_("2020-01-01", Values.Amount.factorize(20000)) //
-                        .addTo(client);
+            Account account = new AccountBuilder() //
+                            .deposit_("2020-01-01", Values.Amount.factorize(20000)) //
+                            .addTo(client);
 
-        new PortfolioBuilder(account) //
-                        .buy(security, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
-                        .sell(security, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
-                        .addTo(client);
+            new PortfolioBuilder(account) //
+                            .buy(security, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                            .sell(security, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                            .addTo(client);
 
-        TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
-        Trade trade = collector.collect(security).get(0);
+            TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
+            Trade trade = collector.collect(security).get(0);
 
-        AtomicBoolean touched = new AtomicBoolean(false);
-        client.addPropertyChangeListener("touch", event -> touched.set(true));
+            AtomicBoolean touched = new AtomicBoolean(false);
+            client.addPropertyChangeListener("touch", event -> touched.set(true));
 
-        Column column = new NameColumn(client);
-        column.getEditingSupport().addListener(new TouchClientListener(client));
+            Column column = new NameColumn(client);
+            column.getEditingSupport().addListener(new TouchClientListener(client));
 
-        column.getEditingSupport().setValue(trade, "Renamed Security");
+            column.getEditingSupport().setValue(trade, "Renamed Security");
 
-        assertThat(security.getName(), is("Renamed Security"));
-        assertThat(client.getSecurities().get(0).getName(), is("Renamed Security"));
-        assertThat(touched.get(), is(true));
+            assertThat(security.getName(), is("Renamed Security"));
+            assertThat(client.getSecurities().get(0).getName(), is("Renamed Security"));
+            assertThat(touched.get(), is(true));
+        });
     }
 
     @Test
