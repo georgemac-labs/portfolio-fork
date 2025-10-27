@@ -792,7 +792,8 @@ public class TradeDetailsView extends AbstractFinanceView
         List<Trade> trades = new ArrayList<>();
         List<TradeCollectorException> errors = new ArrayList<>();
         int processedSecurities = 0;
-        getClient().getSecurities().forEach(s -> {
+        for (Security s : getClient().getSecurities())
+        {
             try
             {
                 var collector = new TradeCollector(getClient(),
@@ -810,7 +811,7 @@ public class TradeDetailsView extends AbstractFinanceView
             {
                 processedSecurities++;
             }
-        });
+        }
 
         PortfolioLog.info(String.format("Finished collecting trades: %d securities processed, %d trades, %d errors", //$NON-NLS-1$
                         Integer.valueOf(processedSecurities), Integer.valueOf(trades.size()), Integer.valueOf(errors.size())));
