@@ -20,6 +20,9 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import org.eclipse.jface.preference.PreferenceStore;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import name.abuchen.portfolio.junit.AccountBuilder;
@@ -39,6 +42,7 @@ import name.abuchen.portfolio.snapshot.trades.TradeCollector;
 import name.abuchen.portfolio.snapshot.trades.TradeCategory;
 import name.abuchen.portfolio.snapshot.trades.TradesGroupedByTaxonomy;
 import name.abuchen.portfolio.ui.editor.AbstractFinanceView;
+import name.abuchen.portfolio.ui.PortfolioPlugin;
 import name.abuchen.portfolio.ui.views.trades.TradeElement;
 import name.abuchen.portfolio.ui.util.viewers.Column;
 import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.TouchClientListener;
@@ -54,6 +58,44 @@ import org.eclipse.swt.widgets.Control;
 @SuppressWarnings("nls")
 public class TradesTableViewerTest
 {
+    private static PortfolioPlugin previousPlugin;
+    private static PortfolioPlugin testPlugin;
+
+    @BeforeClass
+    public static void ensurePreferenceStore() throws Exception
+    {
+        previousPlugin = PortfolioPlugin.getDefault();
+        if (previousPlugin == null)
+        {
+            testPlugin = new PortfolioPlugin();
+            ensurePreferenceStore(testPlugin);
+        }
+        else
+        {
+            ensurePreferenceStore(previousPlugin);
+        }
+    }
+
+    @AfterClass
+    public static void resetPortfolioPlugin() throws Exception
+    {
+        if (testPlugin != null)
+        {
+            var instanceField = PortfolioPlugin.class.getDeclaredField("instance"); //$NON-NLS-1$
+            instanceField.setAccessible(true);
+            instanceField.set(null, previousPlugin);
+            testPlugin = null;
+        }
+    }
+
+    private static void ensurePreferenceStore(PortfolioPlugin plugin) throws Exception
+    {
+        var preferenceStoreField = PortfolioPlugin.class.getDeclaredField("preferenceStore"); //$NON-NLS-1$
+        preferenceStoreField.setAccessible(true);
+        if (preferenceStoreField.get(plugin) == null)
+            preferenceStoreField.set(plugin, new PreferenceStore());
+    }
+
     @Test
     public void tradeReturnIsNotWeightedWhenGroupedByTaxonomy() throws Exception
     {
