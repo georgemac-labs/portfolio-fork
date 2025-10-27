@@ -1,6 +1,7 @@
 package name.abuchen.portfolio.ui.views.trades;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -563,6 +564,18 @@ public class TradeDetailsView extends AbstractFinanceView
 
     private void update()
     {
+        String caller = Arrays.stream(Thread.currentThread().getStackTrace()).skip(2)
+                        .filter(ste -> !ste.getClassName().equals(TradeDetailsView.class.getName()))
+                        .findFirst()
+                        .map(ste -> ste.getClassName() + "#" + ste.getMethodName()) //$NON-NLS-1$
+                        .orElse("<unknown>"); //$NON-NLS-1$
+
+        Pattern activePattern = filterPattern;
+        String patternLabel = activePattern != null ? activePattern.pattern() : "<none>"; //$NON-NLS-1$
+        PortfolioLog.info(String.format(
+                        "Trades update invoked by %s (tableInitialised=%s, filterPattern=%s, thread=%s)", //$NON-NLS-1$
+                        caller, Boolean.valueOf(table != null), patternLabel, Thread.currentThread().getName()));
+
         if (table == null)
         {
             PortfolioLog.info("Trades update skipped: table viewer not yet created"); //$NON-NLS-1$
@@ -570,6 +583,12 @@ public class TradeDetailsView extends AbstractFinanceView
         }
 
         Input data = usePreselectedTrades.isTrue() ? input : collectAllTrades();
+
+        PortfolioLog.info(String.format(
+                        "Trades update data source -> preselected=%s, onlyOpen=%s, onlyClosed=%s, onlyProfitable=%s, onlyLossMaking=%s", //$NON-NLS-1$
+                        Boolean.valueOf(usePreselectedTrades.isTrue()), Boolean.valueOf(onlyOpen.isTrue()),
+                        Boolean.valueOf(onlyClosed.isTrue()), Boolean.valueOf(onlyProfitable.isTrue()),
+                        Boolean.valueOf(onlyLossMaking.isTrue())));
 
         List<Trade> trades = new ArrayList<>(data.getTrades());
         PortfolioLog.info(String.format("Trades update triggered: %d trades before filters. Preselected=%s", //$NON-NLS-1$
