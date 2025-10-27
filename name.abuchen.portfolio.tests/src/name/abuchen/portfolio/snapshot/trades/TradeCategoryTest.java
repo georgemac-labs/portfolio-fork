@@ -5,7 +5,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.closeTo;
 
 import java.time.LocalDate;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 
@@ -296,5 +298,156 @@ public class TradeCategoryTest
         double expectedIrr = IRR.calculate(dates, values);
 
         assertThat(aggregatedIrr, is(closeTo(expectedIrr, 1e-10)));
+    }
+
+    @Test
+    public void testCategoryIRRForShortTradeWithMultipleCoveringBuys() throws Exception
+    {
+        Client client = new Client();
+
+        Security security = new SecurityBuilder() //
+                        .addPrice("2024-01-01", Values.Quote.factorize(10)) //
+                        .addPrice("2024-03-01", Values.Quote.factorize(8)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2024-01-01", Values.Amount.factorize(20000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .sellPrice(security, "2024-01-01", 100.0, 10.0) //
+                        .buyPrice(security, "2024-02-01", 40.0, 9.0) //
+                        .buyPrice(security, "2024-03-01", 60.0, 8.0) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("shorts") //
+                        .addTo(client);
+
+        Classification shorts = taxonomy.getClassificationById("shorts");
+        shorts.addAssignment(new Classification.Assignment(security));
+
+        TestCurrencyConverter converter = new TestCurrencyConverter();
+        TradeCollector collector = new TradeCollector(client, converter);
+        var trades = collector.collect(security);
+
+        assertThat(trades.size(), is(1));
+
+        Trade trade = trades.get(0);
+        assertThat(trade.isLong(), is(false));
+        assertThat(trade.isClosed(), is(true));
+
+        double expectedIrr = calculateExpectedShortIrr(trade, converter);
+
+        assertThat(trade.getIRR(), is(closeTo(expectedIrr, 1e-10)));
+
+        TradeCategory category = new TradeCategory(shorts, converter);
+        category.addTrade(trade, 1.0);
+
+        assertThat(category.getAverageIRR(), is(closeTo(expectedIrr, 1e-10)));
+    }
+
+    private static double calculateExpectedShortIrr(Trade trade, TestCurrencyConverter converter)
+    {
+        Deque<CollateralLot> lots = new ArrayDeque<>();
+        double totalCollateral = 0;
+        double remainingCollateral = 0;
+
+        List<LocalDate> dates = new ArrayList<>();
+        List<Double> values = new ArrayList<>();
+
+        for (TransactionPair<PortfolioTransaction> txPair : trade.getTransactions())
+        {
+            LocalDate date = txPair.getTransaction().getDateTime().toLocalDate();
+            double amount = txPair.getTransaction().getMonetaryAmount()
+                            .with(converter.at(txPair.getTransaction().getDateTime())).getAmount()
+                            / Values.Amount.divider();
+
+            if (txPair.getTransaction().getType().isPurchase() == trade.isLong())
+            {
+                if (!trade.isLong())
+                {
+                    lots.addLast(new CollateralLot(txPair.getTransaction().getShares(), amount));
+                    totalCollateral += amount;
+                    remainingCollateral += amount;
+                }
+                amount = -amount;
+            }
+            else if (!trade.isLong())
+            {
+                double collateralReleased = releaseCollateral(lots, txPair.getTransaction().getShares());
+                remainingCollateral = Math.max(0, remainingCollateral - collateralReleased);
+                amount = collateralReleased - amount;
+            }
+
+            dates.add(date);
+            values.add(amount);
+        }
+
+        if (!trade.isClosed())
+        {
+            LocalDate valuationDate = LocalDate.now();
+            double amount = trade.getExitValue().with(converter.at(valuationDate)).getAmount()
+                            / Values.Amount.divider();
+            amount = trade.isLong() ? amount : remainingCollateral - amount;
+            dates.add(valuationDate);
+            values.add(amount);
+        }
+
+        if (!trade.isLong())
+        {
+            LocalDate endDate = trade.isClosed() ? trade.getEnd().get().toLocalDate() : LocalDate.now();
+            dates.add(endDate);
+            values.add(totalCollateral);
+        }
+
+        return IRR.calculate(dates, values);
+    }
+
+    private static double releaseCollateral(Deque<CollateralLot> lots, long sharesToCover)
+    {
+        double released = 0;
+        long remainingShares = sharesToCover;
+
+        while (remainingShares > 0 && !lots.isEmpty())
+        {
+            CollateralLot lot = lots.peekFirst();
+            if (lot == null)
+                break;
+
+            if (remainingShares >= lot.shares)
+            {
+                released += lot.amount;
+                remainingShares -= lot.shares;
+                lots.removeFirst();
+            }
+            else if (lot.shares > 0)
+            {
+                double fraction = (double) remainingShares / (double) lot.shares;
+                double partialAmount = lot.amount * fraction;
+                released += partialAmount;
+                lot.amount -= partialAmount;
+                lot.shares -= remainingShares;
+                remainingShares = 0;
+            }
+            else
+            {
+                lots.removeFirst();
+            }
+        }
+
+        return released;
+    }
+
+    private static final class CollateralLot
+    {
+        private long shares;
+        private double amount;
+
+        private CollateralLot(long shares, double amount)
+        {
+            this.shares = shares;
+            this.amount = amount;
+        }
     }
 }

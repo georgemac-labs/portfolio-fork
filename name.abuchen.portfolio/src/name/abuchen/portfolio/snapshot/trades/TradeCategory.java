@@ -1,9 +1,11 @@
 package name.abuchen.portfolio.snapshot.trades;
 
 import java.time.LocalDate;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -74,6 +76,53 @@ public class TradeCategory
             this.amount = amount;
             this.order = order;
         }
+    }
+
+    private static final class CollateralLot
+    {
+        private long shares;
+        private double amount;
+
+        private CollateralLot(long shares, double amount)
+        {
+            this.shares = shares;
+            this.amount = amount;
+        }
+    }
+
+    private static double releaseCollateral(Deque<CollateralLot> lots, long sharesToCover)
+    {
+        double released = 0;
+        long remainingShares = sharesToCover;
+
+        while (remainingShares > 0 && !lots.isEmpty())
+        {
+            CollateralLot lot = lots.peekFirst();
+            if (lot == null)
+                break;
+
+            if (remainingShares >= lot.shares)
+            {
+                released += lot.amount;
+                remainingShares -= lot.shares;
+                lots.removeFirst();
+            }
+            else if (lot.shares > 0)
+            {
+                double fraction = (double) remainingShares / (double) lot.shares;
+                double partialAmount = lot.amount * fraction;
+                released += partialAmount;
+                lot.amount -= partialAmount;
+                lot.shares -= remainingShares;
+                remainingShares = 0;
+            }
+            else
+            {
+                lots.removeFirst();
+            }
+        }
+
+        return released;
     }
 
     private final Classification classification;
@@ -273,8 +322,11 @@ public class TradeCategory
             double weight = wt.weight;
             boolean isLong = trade.isLong();
 
+            Deque<CollateralLot> collateralLots = new ArrayDeque<>();
+            double totalCollateral = 0;
+            double remainingCollateral = 0;
+
             // Collect cash flows from all transactions in this trade
-            double collateral = 0;
             for (TransactionPair<PortfolioTransaction> txPair : trade.getTransactions())
             {
                 LocalDate date = txPair.getTransaction().getDateTime().toLocalDate();
@@ -287,14 +339,23 @@ public class TradeCategory
 
                 if (txPair.getTransaction().getType().isPurchase() == isLong)
                 {
-                    collateral += amount;
+                    if (!isLong)
+                    {
+                        collateralLots.addLast(new CollateralLot(txPair.getTransaction().getShares(), amount));
+                        totalCollateral += amount;
+                        remainingCollateral += amount;
+                    }
                     amount = -amount;
                 }
                 else if (!isLong)
                 {
+                    long sharesToCover = txPair.getTransaction().getShares();
+                    double collateralReleased = releaseCollateral(collateralLots, sharesToCover);
+                    remainingCollateral = Math.max(0, remainingCollateral - collateralReleased);
+
                     // For short trades, the closing purchase 'amount' is negative.
                     // The cash flow is the collateral returned minus the cost to close.
-                    amount = collateral - amount;
+                    amount = collateralReleased - amount;
                 }
 
                 cashflows.add(new WeightedCashFlow(date, amount, sequence++));
@@ -309,7 +370,7 @@ public class TradeCategory
                                 / Values.Amount.divider();
                 amount *= weight;
                 if (!isLong)
-                    amount = collateral - amount;
+                    amount = remainingCollateral - amount;
                 cashflows.add(new WeightedCashFlow(date, amount, sequence++));
             }
 
@@ -317,7 +378,7 @@ public class TradeCategory
             if (!isLong)
             {
                 LocalDate endDate = trade.isClosed() ? trade.getEnd().get().toLocalDate() : LocalDate.now();
-                cashflows.add(new WeightedCashFlow(endDate, collateral, sequence++));
+                cashflows.add(new WeightedCashFlow(endDate, totalCollateral, sequence++));
             }
         }
 
