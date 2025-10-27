@@ -7,9 +7,14 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.e4.core.di.annotations.Optional;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.ActionContributionItem;
@@ -44,6 +49,7 @@ import name.abuchen.portfolio.snapshot.trades.TradesGroupedByTaxonomy;
 import name.abuchen.portfolio.ui.Images;
 import name.abuchen.portfolio.ui.Messages;
 import name.abuchen.portfolio.ui.UIConstants;
+import name.abuchen.portfolio.ui.PortfolioPlugin;
 import name.abuchen.portfolio.ui.editor.AbstractFinanceView;
 import name.abuchen.portfolio.ui.selection.SecuritySelection;
 import name.abuchen.portfolio.ui.selection.SelectionService;
@@ -171,6 +177,109 @@ public class TradeDetailsView extends AbstractFinanceView
         }
     }
 
+    private class UpdateTradesJob extends Job
+    {
+        private final Input preselectedInput;
+        private final boolean useSecCurrency;
+        private final CurrencyConverter jobConverter;
+        private final boolean onlyOpen;
+        private final boolean onlyClosed;
+        private final boolean onlyProfitable;
+        private final boolean onlyLossMaking;
+        private final Pattern jobFilterPattern;
+        private final Taxonomy jobTaxonomy;
+        private final boolean hideTotalsAtTheTopJob;
+        private final boolean hideTotalsAtTheBottomJob;
+
+        UpdateTradesJob(Input preselectedInput, boolean useSecCurrency, CurrencyConverter converter,
+                        boolean onlyOpen, boolean onlyClosed, boolean onlyProfitable, boolean onlyLossMaking,
+                        Pattern filterPattern, Taxonomy taxonomy, boolean hideTotalsAtTheTop,
+                        boolean hideTotalsAtTheBottom)
+        {
+            super(Messages.LabelTrades);
+            this.preselectedInput = preselectedInput;
+            this.useSecCurrency = useSecCurrency;
+            this.jobConverter = converter;
+            this.onlyOpen = onlyOpen;
+            this.onlyClosed = onlyClosed;
+            this.onlyProfitable = onlyProfitable;
+            this.onlyLossMaking = onlyLossMaking;
+            this.jobFilterPattern = filterPattern;
+            this.jobTaxonomy = taxonomy;
+            this.hideTotalsAtTheTopJob = hideTotalsAtTheTop;
+            this.hideTotalsAtTheBottomJob = hideTotalsAtTheBottom;
+        }
+
+        @Override
+        protected IStatus run(IProgressMonitor monitor)
+        {
+            if (monitor != null)
+                monitor.beginTask(Messages.LabelTrades, IProgressMonitor.UNKNOWN);
+
+            try
+            {
+                Input data = preselectedInput != null ? preselectedInput
+                                : collectAllTrades(useSecCurrency, jobConverter);
+
+                if (monitor != null && monitor.isCanceled())
+                    return Status.CANCEL_STATUS;
+
+                Stream<Trade> filteredTrades = data.getTrades().stream();
+
+                if (onlyClosed)
+                    filteredTrades = filteredTrades.filter(Trade::isClosed);
+                if (onlyOpen)
+                    filteredTrades = filteredTrades.filter(t -> !t.isClosed());
+                if (onlyLossMaking)
+                    filteredTrades = filteredTrades.filter(Trade::isLoss);
+                if (onlyProfitable)
+                    filteredTrades = filteredTrades.filter(t -> t.getProfitLoss().isPositive());
+                if (jobFilterPattern != null)
+                    filteredTrades = filteredTrades.filter(t -> matchesFilter(t, jobFilterPattern));
+
+                List<Trade> trades = filteredTrades.collect(Collectors.toList());
+
+                if (monitor != null && monitor.isCanceled())
+                    return Status.CANCEL_STATUS;
+
+                List<?> finalTableInput;
+                if (jobTaxonomy != null)
+                {
+                    TradesGroupedByTaxonomy groupedTrades = new TradesGroupedByTaxonomy(jobTaxonomy, trades, jobConverter);
+                    finalTableInput = flattenToElements(groupedTrades, hideTotalsAtTheTopJob, hideTotalsAtTheBottomJob);
+                }
+                else
+                {
+                    finalTableInput = trades;
+                }
+
+                List<TradeCollectorException> errors = data.getErrors();
+
+                if (monitor != null && monitor.isCanceled())
+                    return Status.CANCEL_STATUS;
+
+                Display display = Display.getDefault();
+                if (display == null || display.isDisposed())
+                    return Status.CANCEL_STATUS;
+
+                display.asyncExec(() -> applyJobResult(this, finalTableInput, errors));
+
+                return Status.OK_STATUS;
+            }
+            catch (Exception e)
+            {
+                PortfolioPlugin.log(e);
+                scheduleCursorReset(this);
+                return new Status(IStatus.ERROR, PortfolioPlugin.PLUGIN_ID, "Failed to update trades", e); //$NON-NLS-1$
+            }
+            finally
+            {
+                if (monitor != null)
+                    monitor.done();
+            }
+        }
+    }
+
     private static final String PREF_USE_SECURITY_CURRENCY = "useSecurityCurrency"; //$NON-NLS-1$
     private static final String PREF_HIDE_TOTALS_TOP = TradeDetailsView.class.getSimpleName() + "@hideTotalsTop"; //$NON-NLS-1$
     private static final String PREF_HIDE_TOTALS_BOTTOM = TradeDetailsView.class.getSimpleName() + "@hideTotalsBottom"; //$NON-NLS-1$
@@ -185,6 +294,7 @@ public class TradeDetailsView extends AbstractFinanceView
     private CurrencyConverter converter;
     private TradesTableViewer table;
     private Taxonomy taxonomy;
+    private Job currentUpdateJob;
 
     @Override
     protected String getDefaultTitle()
@@ -544,49 +654,95 @@ public class TradeDetailsView extends AbstractFinanceView
 
     private void update()
     {
-        Input data = usePreselectedTrades.isTrue() ? input : collectAllTrades();
+        if (table == null)
+            return;
 
-        Stream<Trade> filteredTrades = data.getTrades().stream();
+        var control = table.getTableViewer().getControl();
+        if (control == null || control.isDisposed())
+            return;
 
-        if (onlyClosed.isTrue())
-            filteredTrades = filteredTrades.filter(Trade::isClosed);
-        if (onlyOpen.isTrue())
-            filteredTrades = filteredTrades.filter(t -> !t.isClosed());
-        if (onlyLossMaking.isTrue())
-            filteredTrades = filteredTrades.filter(Trade::isLoss);
-        if (onlyProfitable.isTrue())
-            filteredTrades = filteredTrades.filter(t -> t.getProfitLoss().isPositive());
-        if (filterPattern != null)
-            filteredTrades = filteredTrades.filter(this::matchesFilter);
+        if (currentUpdateJob != null)
+            currentUpdateJob.cancel();
 
-        List<Trade> trades = filteredTrades.collect(Collectors.toList());
+        control.setCursor(control.getDisplay().getSystemCursor(SWT.CURSOR_WAIT));
 
-        // If taxonomy is selected, group trades; otherwise show flat list
-        if (taxonomy != null)
-        {
-            TradesGroupedByTaxonomy groupedTrades = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
-            table.setInput(flattenToElements(groupedTrades));
-        }
-        else
-        {
-            table.setInput(trades);
-        }
+        Input preselectedInput = usePreselectedTrades.isTrue() ? input : null;
 
+        currentUpdateJob = new UpdateTradesJob(preselectedInput, this.useSecurityCurrency, this.converter,
+                        this.onlyOpen.isTrue(), this.onlyClosed.isTrue(), this.onlyProfitable.isTrue(),
+                        this.onlyLossMaking.isTrue(), this.filterPattern, this.taxonomy, this.hideTotalsAtTheTop,
+                        this.hideTotalsAtTheBottom);
+        currentUpdateJob.setSystem(true);
+        currentUpdateJob.schedule();
+    }
+
+    private void applyJobResult(Job job, List<?> finalTableInput, List<TradeCollectorException> errors)
+    {
+        if (currentUpdateJob != job)
+            return;
+
+        if (table == null)
+            return;
+
+        var viewer = table.getTableViewer();
+        if (viewer == null)
+            return;
+
+        var control = viewer.getControl();
+        if (control == null || control.isDisposed())
+            return;
+
+        table.setInput(finalTableInput);
+        updateToolbarErrors(errors);
+        control.setCursor(null);
+        currentUpdateJob = null;
+    }
+
+    private void scheduleCursorReset(Job job)
+    {
+        Display display = Display.getDefault();
+        if (display == null || display.isDisposed())
+            return;
+
+        display.asyncExec(() -> {
+            if (currentUpdateJob != job)
+                return;
+
+            if (table == null)
+                return;
+
+            var viewer = table.getTableViewer();
+            if (viewer == null)
+                return;
+
+            var control = viewer.getControl();
+            if (control == null || control.isDisposed())
+                return;
+
+            control.setCursor(null);
+            currentUpdateJob = null;
+        });
+    }
+
+    private void updateToolbarErrors(List<TradeCollectorException> errors)
+    {
         ToolBarManager toolBar = getToolBarManager();
+        if (toolBar == null)
+            return;
 
-        if (!data.getErrors().isEmpty())
+        if (!errors.isEmpty())
         {
-            if (toolBar.find(ID_WARNING_TOOL_ITEM) == null)
-            {
-                Action warning = new SimpleAction(Messages.MsgErrorTradeCollectionWithErrors,
-                                Images.ERROR_NOTICE.descriptor(),
-                                a -> MessageDialog.openError(Display.getDefault().getActiveShell(), Messages.LabelError,
-                                                data.getErrors().stream().map(TradeCollectorException::getMessage)
-                                                                .collect(Collectors.joining("\n\n")))); //$NON-NLS-1$
-                warning.setId(ID_WARNING_TOOL_ITEM);
-                toolBar.insert(0, new ActionContributionItem(warning));
-                toolBar.update(true);
-            }
+            toolBar.remove(ID_WARNING_TOOL_ITEM);
+
+            Action warning = new SimpleAction(Messages.MsgErrorTradeCollectionWithErrors,
+                            Images.ERROR_NOTICE.descriptor(), a -> {
+                                String message = errors.stream().map(TradeCollectorException::getMessage)
+                                                .collect(Collectors.joining("\n\n")); //$NON-NLS-1$
+                                MessageDialog.openError(Display.getDefault().getActiveShell(), Messages.LabelError, message);
+                            });
+            warning.setId(ID_WARNING_TOOL_ITEM);
+            toolBar.insert(0, new ActionContributionItem(warning));
+            toolBar.update(true);
         }
         else
         {
@@ -595,9 +751,19 @@ public class TradeDetailsView extends AbstractFinanceView
         }
     }
 
-    private boolean matchesFilter(Trade trade)
+    @PreDestroy
+    private void disposeView()
     {
-        if (filterPattern == null)
+        if (currentUpdateJob != null)
+        {
+            currentUpdateJob.cancel();
+            currentUpdateJob = null;
+        }
+    }
+
+    private static boolean matchesFilter(Trade trade, Pattern pattern)
+    {
+        if (pattern == null)
             return true;
 
         if (trade == null)
@@ -613,23 +779,24 @@ public class TradeDetailsView extends AbstractFinanceView
 
         for (String property : properties)
         {
-            if (property != null && filterPattern.matcher(property).matches())
+            if (property != null && pattern.matcher(property).matches())
                 return true;
         }
 
         return false;
     }
 
-    private Input collectAllTrades()
+    private Input collectAllTrades(boolean useSecCurrency, CurrencyConverter currentConverter)
     {
         List<Trade> trades = new ArrayList<>();
         List<TradeCollectorException> errors = new ArrayList<>();
         getClient().getSecurities().forEach(s -> {
             try
             {
-                var collector = new TradeCollector(getClient(),
-                                useSecurityCurrency && s.getCurrencyCode() != null ? converter.with(s.getCurrencyCode())
-                                                : converter);
+                CurrencyConverter converterToUse = useSecCurrency && s.getCurrencyCode() != null
+                                ? currentConverter.with(s.getCurrencyCode())
+                                : currentConverter;
+                var collector = new TradeCollector(getClient(), converterToUse);
                 trades.addAll(collector.collect(s));
             }
             catch (TradeCollectorException e)
@@ -638,7 +805,7 @@ public class TradeDetailsView extends AbstractFinanceView
             }
         });
 
-        return new Input(null, trades, errors, useSecurityCurrency);
+        return new Input(null, trades, errors, useSecCurrency);
     }
 
     /**
@@ -647,7 +814,8 @@ public class TradeDetailsView extends AbstractFinanceView
      * Uses sortOrder to keep categories as headers - category gets sortOrder N,
      * then all its trades get sortOrder N+1 (same for all trades in that category).
      */
-    private List<TradeElement> flattenToElements(TradesGroupedByTaxonomy groupedTrades)
+    private List<TradeElement> flattenToElements(TradesGroupedByTaxonomy groupedTrades, boolean hideTotalsAtTheTop,
+                    boolean hideTotalsAtTheBottom)
     {
         List<TradeElement> elements = new ArrayList<>();
         TradeTotals totals = new TradeTotals(groupedTrades);
