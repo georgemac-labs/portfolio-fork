@@ -354,13 +354,13 @@ public class TradeDetailsView extends AbstractFinanceView
                     if (filterText.length() == 0)
                     {
                         filterPattern = null;
-                        update();
+                        TradeDetailsView.this.update();
                     }
                     else
                     {
                         filterPattern = Pattern.compile(".*" + filterText + ".*", //$NON-NLS-1$ //$NON-NLS-2$
                                         Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-                        update();
+                        TradeDetailsView.this.update();
                     }
                 });
 
