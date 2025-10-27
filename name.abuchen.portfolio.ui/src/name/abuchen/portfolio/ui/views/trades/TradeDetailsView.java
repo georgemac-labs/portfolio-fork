@@ -3,6 +3,7 @@ package name.abuchen.portfolio.ui.views.trades;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -211,6 +212,7 @@ public class TradeDetailsView extends AbstractFinanceView
     private MutableBoolean onlyLossMaking = new MutableBoolean(false);
 
     private Pattern filterPattern;
+    private final AtomicInteger updateSequence = new AtomicInteger();
 
     @Inject
     @Optional
@@ -361,9 +363,10 @@ public class TradeDetailsView extends AbstractFinanceView
                     {
                         PortfolioLog.info("Clearing trades search filter (empty text)"); //$NON-NLS-1$
                         filterPattern = null;
+                        int nextUpdateId = updateSequence.get() + 1;
                         PortfolioLog.info(String.format(
-                                        "Trades search invoking update (table initialised=%s, current viewer input=%s)", //$NON-NLS-1$
-                                        Boolean.valueOf(table != null),
+                                        "Trades search invoking update #%d (table initialised=%s, current viewer input=%s)", //$NON-NLS-1$
+                                        Integer.valueOf(nextUpdateId), Boolean.valueOf(table != null),
                                         table != null && table.getTableViewer().getInput() != null
                                                         ? table.getTableViewer().getInput().getClass().getName()
                                                         : "<none>")); //$NON-NLS-1$
@@ -374,9 +377,10 @@ public class TradeDetailsView extends AbstractFinanceView
                         filterPattern = Pattern.compile(".*" + filterText + ".*", //$NON-NLS-1$ //$NON-NLS-2$
                                         Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
                         PortfolioLog.info(String.format("Trades search pattern applied: %s", filterPattern)); //$NON-NLS-1$
+                        int nextUpdateId = updateSequence.get() + 1;
                         PortfolioLog.info(String.format(
-                                        "Trades search invoking update (table initialised=%s, current viewer input=%s)", //$NON-NLS-1$
-                                        Boolean.valueOf(table != null),
+                                        "Trades search invoking update #%d (table initialised=%s, current viewer input=%s)", //$NON-NLS-1$
+                                        Integer.valueOf(nextUpdateId), Boolean.valueOf(table != null),
                                         table != null && table.getTableViewer().getInput() != null
                                                         ? table.getTableViewer().getInput().getClass().getName()
                                                         : "<none>")); //$NON-NLS-1$
@@ -564,6 +568,8 @@ public class TradeDetailsView extends AbstractFinanceView
 
     private void update()
     {
+        int updateId = updateSequence.incrementAndGet();
+
         String caller = Arrays.stream(Thread.currentThread().getStackTrace()).skip(2)
                         .filter(ste -> !ste.getClassName().equals(TradeDetailsView.class.getName()))
                         .findFirst()
@@ -573,93 +579,119 @@ public class TradeDetailsView extends AbstractFinanceView
         Pattern activePattern = filterPattern;
         String patternLabel = activePattern != null ? activePattern.pattern() : "<none>"; //$NON-NLS-1$
         PortfolioLog.info(String.format(
-                        "Trades update invoked by %s (tableInitialised=%s, filterPattern=%s, thread=%s)", //$NON-NLS-1$
-                        caller, Boolean.valueOf(table != null), patternLabel, Thread.currentThread().getName()));
+                        "Trades update[#%d] invoked by %s (tableInitialised=%s, filterPattern=%s, thread=%s)", //$NON-NLS-1$
+                        Integer.valueOf(updateId), caller, Boolean.valueOf(table != null), patternLabel,
+                        Thread.currentThread().getName()));
 
         if (table == null)
         {
-            PortfolioLog.info("Trades update skipped: table viewer not yet created"); //$NON-NLS-1$
+            PortfolioLog.info(String.format("Trades update[#%d] skipped: table viewer not yet created", //$NON-NLS-1$
+                            Integer.valueOf(updateId)));
             return;
         }
 
         Input data = usePreselectedTrades.isTrue() ? input : collectAllTrades();
 
         PortfolioLog.info(String.format(
-                        "Trades update data source -> preselected=%s, onlyOpen=%s, onlyClosed=%s, onlyProfitable=%s, onlyLossMaking=%s", //$NON-NLS-1$
-                        Boolean.valueOf(usePreselectedTrades.isTrue()), Boolean.valueOf(onlyOpen.isTrue()),
-                        Boolean.valueOf(onlyClosed.isTrue()), Boolean.valueOf(onlyProfitable.isTrue()),
-                        Boolean.valueOf(onlyLossMaking.isTrue())));
+                        "Trades update[#%d] data source -> preselected=%s, onlyOpen=%s, onlyClosed=%s, onlyProfitable=%s, onlyLossMaking=%s", //$NON-NLS-1$
+                        Integer.valueOf(updateId), Boolean.valueOf(usePreselectedTrades.isTrue()),
+                        Boolean.valueOf(onlyOpen.isTrue()), Boolean.valueOf(onlyClosed.isTrue()),
+                        Boolean.valueOf(onlyProfitable.isTrue()), Boolean.valueOf(onlyLossMaking.isTrue())));
 
         List<Trade> trades = new ArrayList<>(data.getTrades());
-        PortfolioLog.info(String.format("Trades update triggered: %d trades before filters. Preselected=%s", //$NON-NLS-1$
-                        Integer.valueOf(trades.size()), Boolean.valueOf(usePreselectedTrades.isTrue())));
+        PortfolioLog.info(String.format(
+                        "Trades update[#%d] triggered: %d trades before filters. Preselected=%s", //$NON-NLS-1$
+                        Integer.valueOf(updateId), Integer.valueOf(trades.size()),
+                        Boolean.valueOf(usePreselectedTrades.isTrue())));
+
+        logTradesPreview(updateId, "pre-filter", trades); //$NON-NLS-1$
 
         if (onlyClosed.isTrue())
         {
             trades = trades.stream().filter(Trade::isClosed).collect(Collectors.toList());
-            PortfolioLog.info(String.format("Applied 'only closed' filter -> %d trades", Integer.valueOf(trades.size()))); //$NON-NLS-1$
+            PortfolioLog.info(String.format(
+                            "Trades update[#%d] applied 'only closed' filter -> %d trades", Integer.valueOf(updateId), //$NON-NLS-1$
+                            Integer.valueOf(trades.size())));
         }
         if (onlyOpen.isTrue())
         {
             trades = trades.stream().filter(t -> !t.isClosed()).collect(Collectors.toList());
-            PortfolioLog.info(String.format("Applied 'only open' filter -> %d trades", Integer.valueOf(trades.size()))); //$NON-NLS-1$
+            PortfolioLog.info(String.format(
+                            "Trades update[#%d] applied 'only open' filter -> %d trades", Integer.valueOf(updateId), //$NON-NLS-1$
+                            Integer.valueOf(trades.size())));
         }
         if (onlyLossMaking.isTrue())
         {
             trades = trades.stream().filter(Trade::isLoss).collect(Collectors.toList());
-            PortfolioLog.info(String.format("Applied 'only loss making' filter -> %d trades", Integer.valueOf(trades.size()))); //$NON-NLS-1$
+            PortfolioLog.info(String.format(
+                            "Trades update[#%d] applied 'only loss making' filter -> %d trades", //$NON-NLS-1$
+                            Integer.valueOf(updateId), Integer.valueOf(trades.size())));
         }
         if (onlyProfitable.isTrue())
         {
             trades = trades.stream().filter(t -> t.getProfitLoss().isPositive()).collect(Collectors.toList());
-            PortfolioLog.info(String.format("Applied 'only profitable' filter -> %d trades", Integer.valueOf(trades.size()))); //$NON-NLS-1$
+            PortfolioLog.info(String.format(
+                            "Trades update[#%d] applied 'only profitable' filter -> %d trades", //$NON-NLS-1$
+                            Integer.valueOf(updateId), Integer.valueOf(trades.size())));
         }
         if (filterPattern != null)
         {
             Pattern pattern = filterPattern;
             List<Trade> beforePatternFilter = trades;
             trades = trades.stream().filter(this::matchesFilter).collect(Collectors.toList());
-            PortfolioLog.info(String.format("Applied search pattern '%s' -> %d/%d trades", pattern,
-                            Integer.valueOf(trades.size()), Integer.valueOf(beforePatternFilter.size()))); //$NON-NLS-1$
+            PortfolioLog.info(String.format(
+                            "Trades update[#%d] applied search pattern '%s' -> %d/%d trades", Integer.valueOf(updateId), //$NON-NLS-1$
+                            pattern, Integer.valueOf(trades.size()), Integer.valueOf(beforePatternFilter.size())));
         }
 
-        logFilteredTradesPreview(trades);
+        logTradesPreview(updateId, filterPattern != null ? "post-search" : "post-filter", trades); //$NON-NLS-1$ //$NON-NLS-2$
 
-        PortfolioLog.info(String.format("Trades update complete -> %d trades displayed", Integer.valueOf(trades.size()))); //$NON-NLS-1$
+        PortfolioLog.info(String.format("Trades update[#%d] complete -> %d trades displayed", Integer.valueOf(updateId), //$NON-NLS-1$
+                        Integer.valueOf(trades.size())));
 
         // If taxonomy is selected, group trades; otherwise show flat list
-        logViewerState("before setInput"); //$NON-NLS-1$
+        logViewerState(updateId, "before setInput"); //$NON-NLS-1$
 
+        List<?> viewerInput;
         if (taxonomy != null)
         {
             TradesGroupedByTaxonomy groupedTrades = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
-            table.setInput(flattenToElements(groupedTrades));
-            PortfolioLog.info(String.format("Trades viewer input set to taxonomy '%s'", taxonomy.getName())); //$NON-NLS-1$
+            List<TradeElement> elements = flattenToElements(updateId, groupedTrades);
+            viewerInput = elements;
+            PortfolioLog.info(String.format(
+                            "Trades update[#%d] viewer input set to taxonomy '%s' (%d elements)", //$NON-NLS-1$
+                            Integer.valueOf(updateId), taxonomy.getName(), Integer.valueOf(elements.size())));
         }
         else
         {
-            table.setInput(trades);
-            PortfolioLog.info(String.format("Trades viewer input set to flat list (%d trades)", Integer.valueOf(trades.size()))); //$NON-NLS-1$
+            viewerInput = trades;
+            PortfolioLog.info(String.format(
+                            "Trades update[#%d] viewer input set to flat list (%d trades)", Integer.valueOf(updateId), //$NON-NLS-1$
+                            Integer.valueOf(trades.size())));
         }
 
-        logViewerState("after setInput"); //$NON-NLS-1$
+        table.setInput(viewerInput);
+
+        logViewerState(updateId, "after setInput"); //$NON-NLS-1$
 
         var viewer = table.getTableViewer();
         if (!viewer.getControl().isDisposed())
         {
             viewer.refresh();
-            PortfolioLog.info("Trades viewer refresh requested"); //$NON-NLS-1$
+            PortfolioLog.info(String.format("Trades viewer refresh requested [#%d]", Integer.valueOf(updateId))); //$NON-NLS-1$
         }
         else
         {
-            PortfolioLog.info("Trades viewer refresh skipped: control disposed"); //$NON-NLS-1$
+            PortfolioLog.info(String.format("Trades viewer refresh skipped [#%d]: control disposed", //$NON-NLS-1$
+                            Integer.valueOf(updateId)));
         }
 
-        logViewerState("after refresh"); //$NON-NLS-1$
+        logViewerState(updateId, "after refresh"); //$NON-NLS-1$
 
         int rowCount = viewer.getTable().getItemCount();
-        PortfolioLog.info(String.format("Trades table currently renders %d rows (taxonomy=%s)", Integer.valueOf(rowCount), //$NON-NLS-1$
-                        taxonomy != null ? taxonomy.getName() : "<none>")); //$NON-NLS-1$
+        PortfolioLog.info(String.format("Trades table currently renders %d rows (taxonomy=%s, updateId=%d)", //$NON-NLS-1$
+                        Integer.valueOf(rowCount), taxonomy != null ? taxonomy.getName() : "<none>", //$NON-NLS-1$
+                        Integer.valueOf(updateId)));
 
         ToolBarManager toolBar = getToolBarManager();
 
@@ -684,27 +716,29 @@ public class TradeDetailsView extends AbstractFinanceView
         }
     }
 
-    private void logFilteredTradesPreview(List<Trade> trades)
+    private void logTradesPreview(int updateId, String stage, List<Trade> trades)
     {
         if (trades == null)
         {
-            PortfolioLog.info("Trades filter preview skipped: trades list was null"); //$NON-NLS-1$
+            PortfolioLog.info(String.format("Trades %s preview [#%d] skipped: trades list was null", stage, //$NON-NLS-1$
+                            Integer.valueOf(updateId)));
             return;
         }
 
         if (trades.isEmpty())
         {
-            PortfolioLog.info("Trades filter preview -> no trades remain after applying filters/search"); //$NON-NLS-1$
+            PortfolioLog.info(String.format("Trades %s preview [#%d] -> no trades remain", stage, //$NON-NLS-1$
+                            Integer.valueOf(updateId)));
             return;
         }
 
         var preview = trades.stream().limit(10).map(this::describeTradeForLogging).collect(Collectors.toList());
-        String prefix = filterPattern != null ? "Trades search matches preview" : "Trades filter preview"; //$NON-NLS-1$ //$NON-NLS-2$
         String previewText = String.join(", ", preview); //$NON-NLS-1$
         if (trades.size() > preview.size())
             previewText += ", ..."; //$NON-NLS-1$
 
-        PortfolioLog.info(String.format("%s (%d total) -> %s", prefix, Integer.valueOf(trades.size()), previewText)); //$NON-NLS-1$
+        PortfolioLog.info(String.format("Trades %s preview [#%d] (%d total) -> %s", stage, Integer.valueOf(updateId), //$NON-NLS-1$
+                        Integer.valueOf(trades.size()), previewText));
     }
 
     private String describeTradeForLogging(Trade trade)
@@ -739,18 +773,20 @@ public class TradeDetailsView extends AbstractFinanceView
         return String.join(" / ", descriptors); //$NON-NLS-1$
     }
 
-    private void logViewerState(String phase)
+    private void logViewerState(int updateId, String phase)
     {
         if (table == null)
         {
-            PortfolioLog.info(String.format("Trades viewer state (%s): table not yet created", phase)); //$NON-NLS-1$
+            PortfolioLog.info(String.format("Trades viewer state [#%d] (%s): table not yet created", //$NON-NLS-1$
+                            Integer.valueOf(updateId), phase));
             return;
         }
 
         TableViewer viewer = table.getTableViewer();
         if (viewer == null)
         {
-            PortfolioLog.info(String.format("Trades viewer state (%s): viewer not available", phase)); //$NON-NLS-1$
+            PortfolioLog.info(String.format("Trades viewer state [#%d] (%s): viewer not available", //$NON-NLS-1$
+                            Integer.valueOf(updateId), phase));
             return;
         }
 
@@ -759,8 +795,8 @@ public class TradeDetailsView extends AbstractFinanceView
         String inputType = viewer.getInput() != null ? viewer.getInput().getClass().getName() : "<none>"; //$NON-NLS-1$
         int itemCount = disposed ? -1 : swtTable.getItemCount();
 
-        PortfolioLog.info(String.format("Trades viewer state (%s): disposed=%s, itemCount=%d, input=%s", phase,
-                        Boolean.valueOf(disposed), Integer.valueOf(itemCount), inputType)); //$NON-NLS-1$
+        PortfolioLog.info(String.format("Trades viewer state [#%d] (%s): disposed=%s, itemCount=%d, input=%s", //$NON-NLS-1$
+                        Integer.valueOf(updateId), phase, Boolean.valueOf(disposed), Integer.valueOf(itemCount), inputType));
     }
 
     private boolean matchesFilter(Trade trade)
@@ -782,6 +818,8 @@ public class TradeDetailsView extends AbstractFinanceView
             return false;
         }
 
+        int currentUpdateId = updateSequence.get();
+
         String[][] properties = new String[][] { { "name", security.getName() }, // //$NON-NLS-1$
                         { "isin", security.getIsin() }, // //$NON-NLS-1$
                         { "symbol", security.getTickerSymbol() }, // //$NON-NLS-1$
@@ -794,15 +832,16 @@ public class TradeDetailsView extends AbstractFinanceView
             String value = property[1];
             if (value != null && filterPattern.matcher(value).matches())
             {
-                PortfolioLog.info(String.format("Search pattern '%s' matched trade '%s' via %s '%s'", filterPattern, //$NON-NLS-1$
-                                security.getName(), label, value));
+                PortfolioLog.info(String.format("Search pattern '%s' matched trade '%s' via %s '%s' [updateId=%d]", //$NON-NLS-1$
+                                filterPattern, security.getName(), label, value, Integer.valueOf(currentUpdateId)));
                 return true;
             }
         }
 
         PortfolioLog.info(String.format(
-                        "Search pattern '%s' did not match trade '%s' (isin=%s, symbol=%s, wkn=%s)", filterPattern, //$NON-NLS-1$
-                        security.getName(), security.getIsin(), security.getTickerSymbol(), security.getWkn()));
+                        "Search pattern '%s' did not match trade '%s' (isin=%s, symbol=%s, wkn=%s) [updateId=%d]",
+                        filterPattern, security.getName(), security.getIsin(), security.getTickerSymbol(),
+                        security.getWkn(), Integer.valueOf(currentUpdateId))); //$NON-NLS-1$
         return false;
     }
 
@@ -844,7 +883,7 @@ public class TradeDetailsView extends AbstractFinanceView
      * Uses sortOrder to keep categories as headers - category gets sortOrder N,
      * then all its trades get sortOrder N+1 (same for all trades in that category).
      */
-    private List<TradeElement> flattenToElements(TradesGroupedByTaxonomy groupedTrades)
+    private List<TradeElement> flattenToElements(int updateId, TradesGroupedByTaxonomy groupedTrades)
     {
         List<TradeElement> elements = new ArrayList<>();
         TradeTotals totals = new TradeTotals(groupedTrades);
@@ -883,9 +922,9 @@ public class TradeDetailsView extends AbstractFinanceView
             elements.add(new TradeElement(totals, Integer.MAX_VALUE));
 
         PortfolioLog.info(String.format(
-                        "Trades taxonomy flattened: %d categories, %d trade rows, totalsTopHidden=%s, totalsBottomHidden=%s", //$NON-NLS-1$
-                        Integer.valueOf(categories), Integer.valueOf(tradeElements), Boolean.valueOf(hideTotalsAtTheTop),
-                        Boolean.valueOf(hideTotalsAtTheBottom)));
+                        "Trades taxonomy flattened [#%d]: %d categories, %d trade rows, totalsTopHidden=%s, totalsBottomHidden=%s", //$NON-NLS-1$
+                        Integer.valueOf(updateId), Integer.valueOf(categories), Integer.valueOf(tradeElements),
+                        Boolean.valueOf(hideTotalsAtTheTop), Boolean.valueOf(hideTotalsAtTheBottom)));
 
         return elements;
     }
