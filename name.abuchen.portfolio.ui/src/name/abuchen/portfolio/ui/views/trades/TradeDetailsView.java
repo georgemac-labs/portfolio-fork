@@ -285,6 +285,7 @@ public class TradeDetailsView extends AbstractFinanceView
     private static final String PREF_HIDE_TOTALS_BOTTOM = TradeDetailsView.class.getSimpleName() + "@hideTotalsBottom"; //$NON-NLS-1$
 
     private static final String ID_WARNING_TOOL_ITEM = "warning"; //$NON-NLS-1$
+    private static final int SEARCH_DEBOUNCE_DELAY_MILLIS = 200;
 
     @Inject
     private SelectionService selectionService;
@@ -319,6 +320,7 @@ public class TradeDetailsView extends AbstractFinanceView
     private MutableBoolean onlyLossMaking = new MutableBoolean(false);
 
     private Pattern filterPattern;
+    private Job searchDebounceJob;
 
     @Inject
     @Optional
@@ -460,18 +462,33 @@ public class TradeDetailsView extends AbstractFinanceView
                 search.setSize(300, SWT.DEFAULT);
 
                 search.addModifyListener(e -> {
-                    String filterText = Pattern.quote(search.getText().trim());
-                    if (filterText.length() == 0)
+                    if (searchDebounceJob != null)
+                        searchDebounceJob.cancel();
+
+                    searchDebounceJob = new Job(Messages.LabelSearch)
                     {
-                        filterPattern = null;
-                        TradeDetailsView.this.update();
-                    }
-                    else
-                    {
-                        filterPattern = Pattern.compile(".*" + filterText + ".*", //$NON-NLS-1$ //$NON-NLS-2$
-                                        Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-                        TradeDetailsView.this.update();
-                    }
+                        @Override
+                        protected IStatus run(IProgressMonitor monitor)
+                        {
+                            Display.getDefault().asyncExec(() -> {
+                                if (search.isDisposed())
+                                    return;
+
+                                var filterText = Pattern.quote(search.getText().trim());
+                                if (filterText.isEmpty())
+                                    filterPattern = null;
+                                else
+                                    filterPattern = Pattern.compile(".*" + filterText + ".*", //$NON-NLS-1$ //$NON-NLS-2$
+                                                    Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+                                TradeDetailsView.this.update();
+                            });
+                            return Status.OK_STATUS;
+                        }
+                    };
+
+                    searchDebounceJob.setSystem(true);
+                    searchDebounceJob.schedule(SEARCH_DEBOUNCE_DELAY_MILLIS);
                 });
 
                 return search;
@@ -758,6 +775,12 @@ public class TradeDetailsView extends AbstractFinanceView
         {
             currentUpdateJob.cancel();
             currentUpdateJob = null;
+        }
+
+        if (searchDebounceJob != null)
+        {
+            searchDebounceJob.cancel();
+            searchDebounceJob = null;
         }
     }
 
