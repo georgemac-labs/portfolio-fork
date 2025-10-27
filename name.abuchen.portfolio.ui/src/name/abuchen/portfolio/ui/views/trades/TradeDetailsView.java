@@ -580,6 +580,22 @@ public class TradeDetailsView extends AbstractFinanceView
             if (toolBar.remove(ID_WARNING_TOOL_ITEM) != null)
                 toolBar.update(true);
         }
+
+        refreshViewer();
+    }
+
+    private void refreshViewer()
+    {
+        if (table == null)
+            return;
+
+        var viewer = table.getTableViewer();
+        if (viewer == null)
+            return;
+
+        var control = viewer.getControl();
+        if (control != null && !control.isDisposed())
+            viewer.refresh(false);
     }
 
     private Input collectAllTrades()
