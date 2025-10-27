@@ -22,7 +22,6 @@ import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.jface.viewers.Viewer;
-import org.eclipse.jface.viewers.ViewerFilter;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.KeyListener;
 import org.eclipse.swt.widgets.Composite;
@@ -355,13 +354,13 @@ public class TradeDetailsView extends AbstractFinanceView
                     if (filterText.length() == 0)
                     {
                         filterPattern = null;
-                        table.getTableViewer().refresh(false);
+                        update();
                     }
                     else
                     {
                         filterPattern = Pattern.compile(".*" + filterText + ".*", //$NON-NLS-1$ //$NON-NLS-2$
                                         Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-                        table.getTableViewer().refresh(false);
+                        update();
                     }
                 });
 
@@ -469,47 +468,6 @@ public class TradeDetailsView extends AbstractFinanceView
                 setInformationPaneInput(first);
         });
 
-        table.getTableViewer().addFilter(new ViewerFilter()
-        {
-            @Override
-            public boolean select(Viewer viewer, Object parentElement, Object element)
-            {
-                if (filterPattern == null)
-                    return true;
-                    
-                // Category and total rows are always shown
-                if (element instanceof TradeElement)
-                {
-                    TradeElement tradeElement = (TradeElement) element;
-                    if (tradeElement.isCategory() || tradeElement.isTotal())
-                        return true;
-                }
-                
-                // Extract Trade from either Trade or TradeElement
-                Trade trade = element instanceof Trade ? (Trade) element
-                                : element instanceof TradeElement ? ((TradeElement) element).getTrade() : null;
-                                
-                if (trade == null)
-                    return false;
-                    
-                Security security = trade.getSecurity();
-
-                String[] properties = new String[] { security.getName(), //
-                                security.getIsin(), //
-                                security.getTickerSymbol(), //
-                                security.getWkn() //
-                };
-
-                for (String property : properties)
-                {
-                    if (property != null && filterPattern.matcher(property).matches())
-                        return true;
-                }
-
-                return false;
-            }
-        });
-
         update();
 
         new ContextMenu(table.getTableViewer().getControl(), this::fillContextMenu).hook();
@@ -598,6 +556,8 @@ public class TradeDetailsView extends AbstractFinanceView
             filteredTrades = filteredTrades.filter(Trade::isLoss);
         if (onlyProfitable.isTrue())
             filteredTrades = filteredTrades.filter(t -> t.getProfitLoss().isPositive());
+        if (filterPattern != null)
+            filteredTrades = filteredTrades.filter(this::matchesFilter);
 
         List<Trade> trades = filteredTrades.collect(Collectors.toList());
 
@@ -633,6 +593,31 @@ public class TradeDetailsView extends AbstractFinanceView
             if (toolBar.remove(ID_WARNING_TOOL_ITEM) != null)
                 toolBar.update(true);
         }
+    }
+
+    private boolean matchesFilter(Trade trade)
+    {
+        if (filterPattern == null)
+            return true;
+
+        if (trade == null)
+            return false;
+
+        Security security = trade.getSecurity();
+
+        String[] properties = new String[] { security.getName(), //
+                        security.getIsin(), //
+                        security.getTickerSymbol(), //
+                        security.getWkn() //
+        };
+
+        for (String property : properties)
+        {
+            if (property != null && filterPattern.matcher(property).matches())
+                return true;
+        }
+
+        return false;
     }
 
     private Input collectAllTrades()
@@ -674,6 +659,10 @@ public class TradeDetailsView extends AbstractFinanceView
 
         for (TradeCategory category : groupedTrades.asList())
         {
+            // Do not show categories that have no matching trades
+            if (category.getTradeAssignments().isEmpty())
+                continue;
+
             // Add category row with current sortOrder
             elements.add(new TradeElement(category, sortOrder));
             sortOrder++;
