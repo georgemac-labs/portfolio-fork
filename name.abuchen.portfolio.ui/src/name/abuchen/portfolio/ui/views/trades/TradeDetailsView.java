@@ -20,6 +20,7 @@ import org.eclipse.jface.action.ToolBarManager;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.viewers.IStructuredSelection;
+import org.eclipse.jface.viewers.TableViewer;
 import org.eclipse.jface.viewers.Viewer;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.KeyListener;
@@ -603,9 +604,13 @@ public class TradeDetailsView extends AbstractFinanceView
                             Integer.valueOf(trades.size()), Integer.valueOf(beforePatternFilter.size()))); //$NON-NLS-1$
         }
 
+        logFilteredTradesPreview(trades);
+
         PortfolioLog.info(String.format("Trades update complete -> %d trades displayed", Integer.valueOf(trades.size()))); //$NON-NLS-1$
 
         // If taxonomy is selected, group trades; otherwise show flat list
+        logViewerState("before setInput"); //$NON-NLS-1$
+
         if (taxonomy != null)
         {
             TradesGroupedByTaxonomy groupedTrades = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
@@ -618,7 +623,22 @@ public class TradeDetailsView extends AbstractFinanceView
             PortfolioLog.info(String.format("Trades viewer input set to flat list (%d trades)", Integer.valueOf(trades.size()))); //$NON-NLS-1$
         }
 
-        int rowCount = table.getTableViewer().getTable().getItemCount();
+        logViewerState("after setInput"); //$NON-NLS-1$
+
+        var viewer = table.getTableViewer();
+        if (!viewer.getControl().isDisposed())
+        {
+            viewer.refresh();
+            PortfolioLog.info("Trades viewer refresh requested"); //$NON-NLS-1$
+        }
+        else
+        {
+            PortfolioLog.info("Trades viewer refresh skipped: control disposed"); //$NON-NLS-1$
+        }
+
+        logViewerState("after refresh"); //$NON-NLS-1$
+
+        int rowCount = viewer.getTable().getItemCount();
         PortfolioLog.info(String.format("Trades table currently renders %d rows (taxonomy=%s)", Integer.valueOf(rowCount), //$NON-NLS-1$
                         taxonomy != null ? taxonomy.getName() : "<none>")); //$NON-NLS-1$
 
@@ -643,6 +663,77 @@ public class TradeDetailsView extends AbstractFinanceView
             if (toolBar.remove(ID_WARNING_TOOL_ITEM) != null)
                 toolBar.update(true);
         }
+    }
+
+    private void logFilteredTradesPreview(List<Trade> trades)
+    {
+        if (trades == null)
+        {
+            PortfolioLog.info("Trades filter preview skipped: trades list was null"); //$NON-NLS-1$
+            return;
+        }
+
+        if (trades.isEmpty())
+        {
+            PortfolioLog.info("Trades filter preview -> no trades remain after applying filters/search"); //$NON-NLS-1$
+            return;
+        }
+
+        var preview = trades.stream().limit(10).map(this::describeTradeForLogging).collect(Collectors.toList());
+        String prefix = filterPattern != null ? "Trades search matches preview" : "Trades filter preview"; //$NON-NLS-1$ //$NON-NLS-2$
+        String previewText = String.join(", ", preview); //$NON-NLS-1$
+        if (trades.size() > preview.size())
+            previewText += ", ..."; //$NON-NLS-1$
+
+        PortfolioLog.info(String.format("%s (%d total) -> %s", prefix, Integer.valueOf(trades.size()), previewText)); //$NON-NLS-1$
+    }
+
+    private String describeTradeForLogging(Trade trade)
+    {
+        if (trade == null)
+            return "<null trade>"; //$NON-NLS-1$
+
+        var security = trade.getSecurity();
+        if (security == null)
+            return "<trade without security>"; //$NON-NLS-1$
+
+        var descriptors = new ArrayList<String>();
+        if (!TextUtil.isEmpty(security.getName()))
+            descriptors.add(security.getName());
+        if (!TextUtil.isEmpty(security.getTickerSymbol()))
+            descriptors.add(security.getTickerSymbol());
+        if (!TextUtil.isEmpty(security.getIsin()))
+            descriptors.add(security.getIsin());
+        if (!TextUtil.isEmpty(security.getWkn()))
+            descriptors.add(security.getWkn());
+        if (descriptors.isEmpty())
+            descriptors.add(String.format("Security@%s", Integer.valueOf(System.identityHashCode(security)))); //$NON-NLS-1$
+
+        return String.join(" / ", descriptors); //$NON-NLS-1$
+    }
+
+    private void logViewerState(String phase)
+    {
+        if (table == null)
+        {
+            PortfolioLog.info(String.format("Trades viewer state (%s): table not yet created", phase)); //$NON-NLS-1$
+            return;
+        }
+
+        TableViewer viewer = table.getTableViewer();
+        if (viewer == null)
+        {
+            PortfolioLog.info(String.format("Trades viewer state (%s): viewer not available", phase)); //$NON-NLS-1$
+            return;
+        }
+
+        var swtTable = viewer.getTable();
+        boolean disposed = swtTable == null || swtTable.isDisposed();
+        String inputType = viewer.getInput() != null ? viewer.getInput().getClass().getName() : "<none>"; //$NON-NLS-1$
+        int itemCount = disposed ? -1 : swtTable.getItemCount();
+
+        PortfolioLog.info(String.format("Trades viewer state (%s): disposed=%s, itemCount=%d, input=%s", phase,
+                        Boolean.valueOf(disposed), Integer.valueOf(itemCount), inputType)); //$NON-NLS-1$
     }
 
     private boolean matchesFilter(Trade trade)
