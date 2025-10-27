@@ -21,9 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import org.eclipse.jface.preference.PreferenceStore;
-import org.junit.After;
 import org.junit.AfterClass;
-import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -66,10 +64,6 @@ public class TradesTableViewerTest
 {
     private static PortfolioPlugin previousPlugin;
     private static PortfolioPlugin testPlugin;
-    private Display display;
-    private boolean disposeDisplay;
-    private Realm realm;
-
     @BeforeClass
     public static void ensurePreferenceStore() throws Exception
     {
@@ -109,53 +103,22 @@ public class TradesTableViewerTest
             preferenceStoreField.set(plugin, new PreferenceStore());
     }
 
-    @Before
-    public void setUpRealm()
-    {
-        ensureDisplayRealm();
-    }
-
-    @After
-    public void tearDownRealm()
-    {
-        if (disposeDisplay && display != null && !display.isDisposed())
-        {
-            display.dispose();
-        }
-
-        display = null;
-        realm = null;
-        disposeDisplay = false;
-    }
-
-    private void ensureDisplayRealm()
-    {
-        if (display == null || display.isDisposed())
-        {
-            Display current = Display.getCurrent();
-            if (current != null && !current.isDisposed())
-            {
-                display = current;
-                disposeDisplay = false;
-            }
-            else
-            {
-                display = new Display();
-                disposeDisplay = true;
-            }
-        }
-
-        if (realm == null)
-            realm = DisplayRealm.getRealm(display);
-    }
-
     private void runWithDisplayRealm(ThrowingRunnable runnable) throws Exception
     {
-        ensureDisplayRealm();
+        Display threadDisplay = Display.getCurrent();
+        boolean weCreatedDisplay = false;
+
+        if (threadDisplay == null)
+        {
+            threadDisplay = new Display();
+            weCreatedDisplay = true;
+        }
+
+        Realm threadRealm = DisplayRealm.getRealm(threadDisplay);
 
         try
         {
-            Realm.runWithDefault(realm, () -> {
+            Realm.runWithDefault(threadRealm, () -> {
                 try
                 {
                     runnable.run();
@@ -171,6 +134,13 @@ public class TradesTableViewerTest
             if (e.getCause() instanceof Exception exception)
                 throw exception;
             throw e;
+        }
+        finally
+        {
+            if (weCreatedDisplay && threadDisplay != null && !threadDisplay.isDisposed())
+            {
+                threadDisplay.dispose();
+            }
         }
     }
 
