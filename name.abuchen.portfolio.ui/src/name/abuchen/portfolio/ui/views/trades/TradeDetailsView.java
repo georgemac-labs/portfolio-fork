@@ -445,7 +445,7 @@ public class TradeDetailsView extends AbstractFinanceView
     {
         table = new TradesTableViewer(this);
 
-        Control control = table.createViewControl(parent, TradesTableViewer.ViewMode.MULTIPLE_SECURITES);
+        Control control = table.createViewControl(parent, TradesTableViewer.ViewMode.MULTIPLE_SECURITIES);
 
         table.getTableViewer().addSelectionChangedListener(event -> {
             var structured = event.getStructuredSelection();

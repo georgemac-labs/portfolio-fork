@@ -266,7 +266,7 @@ public class TradesTableViewerTest
         Method method = TradesTableViewer.class.getDeclaredMethod("createTradesColumns", ShowHideColumnHelper.class,
                         TradesTableViewer.ViewMode.class);
         method.setAccessible(true);
-        method.invoke(viewer, helper, TradesTableViewer.ViewMode.MULTIPLE_SECURITES);
+        method.invoke(viewer, helper, TradesTableViewer.ViewMode.MULTIPLE_SECURITIES);
 
         Column nameColumn = columns.stream().filter(NameColumn.class::isInstance).findFirst().orElseThrow();
         ColumnLabelProvider provider = (ColumnLabelProvider) nameColumn.getLabelProvider().get();

@@ -63,7 +63,7 @@ public class TradesTableViewer
 {
     public enum ViewMode
     {
-        SINGLE_SECURITY, MULTIPLE_SECURITES
+        SINGLE_SECURITY, MULTIPLE_SECURITIES
     }
 
     private AbstractFinanceView view;
@@ -282,7 +282,7 @@ public class TradesTableViewer
     {
         Column column;
 
-        if (viewMode == ViewMode.MULTIPLE_SECURITES)
+        if (viewMode == ViewMode.MULTIPLE_SECURITIES)
         {
             // Custom name column that handles both trades (showing security
             // name)
