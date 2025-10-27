@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.inject.Inject;
@@ -29,6 +28,7 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Text;
 
+import name.abuchen.portfolio.PortfolioLog;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.model.Taxonomy;
 import name.abuchen.portfolio.money.CurrencyConverter;
@@ -350,9 +350,14 @@ public class TradeDetailsView extends AbstractFinanceView
                 search.setSize(300, SWT.DEFAULT);
 
                 search.addModifyListener(e -> {
-                    String filterText = Pattern.quote(search.getText().trim());
+                    String rawText = search.getText();
+                    String trimmed = rawText.trim();
+                    PortfolioLog.info(String.format("Trades search updated. Raw='%s', Trimmed='%s'", rawText, trimmed)); //$NON-NLS-1$
+
+                    String filterText = Pattern.quote(trimmed);
                     if (filterText.length() == 0)
                     {
+                        PortfolioLog.info("Clearing trades search filter (empty text)"); //$NON-NLS-1$
                         filterPattern = null;
                         update();
                     }
@@ -360,6 +365,7 @@ public class TradeDetailsView extends AbstractFinanceView
                     {
                         filterPattern = Pattern.compile(".*" + filterText + ".*", //$NON-NLS-1$ //$NON-NLS-2$
                                         Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+                        PortfolioLog.info(String.format("Trades search pattern applied: %s", filterPattern)); //$NON-NLS-1$
                         update();
                     }
                 });
@@ -546,20 +552,40 @@ public class TradeDetailsView extends AbstractFinanceView
     {
         Input data = usePreselectedTrades.isTrue() ? input : collectAllTrades();
 
-        Stream<Trade> filteredTrades = data.getTrades().stream();
+        List<Trade> trades = new ArrayList<>(data.getTrades());
+        PortfolioLog.info(String.format("Trades update triggered: %d trades before filters. Preselected=%s", //$NON-NLS-1$
+                        Integer.valueOf(trades.size()), Boolean.valueOf(usePreselectedTrades.isTrue())));
 
         if (onlyClosed.isTrue())
-            filteredTrades = filteredTrades.filter(Trade::isClosed);
+        {
+            trades = trades.stream().filter(Trade::isClosed).collect(Collectors.toList());
+            PortfolioLog.info(String.format("Applied 'only closed' filter -> %d trades", Integer.valueOf(trades.size()))); //$NON-NLS-1$
+        }
         if (onlyOpen.isTrue())
-            filteredTrades = filteredTrades.filter(t -> !t.isClosed());
+        {
+            trades = trades.stream().filter(t -> !t.isClosed()).collect(Collectors.toList());
+            PortfolioLog.info(String.format("Applied 'only open' filter -> %d trades", Integer.valueOf(trades.size()))); //$NON-NLS-1$
+        }
         if (onlyLossMaking.isTrue())
-            filteredTrades = filteredTrades.filter(Trade::isLoss);
+        {
+            trades = trades.stream().filter(Trade::isLoss).collect(Collectors.toList());
+            PortfolioLog.info(String.format("Applied 'only loss making' filter -> %d trades", Integer.valueOf(trades.size()))); //$NON-NLS-1$
+        }
         if (onlyProfitable.isTrue())
-            filteredTrades = filteredTrades.filter(t -> t.getProfitLoss().isPositive());
+        {
+            trades = trades.stream().filter(t -> t.getProfitLoss().isPositive()).collect(Collectors.toList());
+            PortfolioLog.info(String.format("Applied 'only profitable' filter -> %d trades", Integer.valueOf(trades.size()))); //$NON-NLS-1$
+        }
         if (filterPattern != null)
-            filteredTrades = filteredTrades.filter(this::matchesFilter);
+        {
+            Pattern pattern = filterPattern;
+            List<Trade> beforePatternFilter = trades;
+            trades = trades.stream().filter(this::matchesFilter).collect(Collectors.toList());
+            PortfolioLog.info(String.format("Applied search pattern '%s' -> %d/%d trades", pattern,
+                            Integer.valueOf(trades.size()), Integer.valueOf(beforePatternFilter.size()))); //$NON-NLS-1$
+        }
 
-        List<Trade> trades = filteredTrades.collect(Collectors.toList());
+        PortfolioLog.info(String.format("Trades update complete -> %d trades displayed", Integer.valueOf(trades.size()))); //$NON-NLS-1$
 
         // If taxonomy is selected, group trades; otherwise show flat list
         if (taxonomy != null)
@@ -601,22 +627,40 @@ public class TradeDetailsView extends AbstractFinanceView
             return true;
 
         if (trade == null)
+        {
+            PortfolioLog.info("Search pattern check skipped: trade was null"); //$NON-NLS-1$
             return false;
+        }
 
         Security security = trade.getSecurity();
 
-        String[] properties = new String[] { security.getName(), //
-                        security.getIsin(), //
-                        security.getTickerSymbol(), //
-                        security.getWkn() //
-        };
-
-        for (String property : properties)
+        if (security == null)
         {
-            if (property != null && filterPattern.matcher(property).matches())
-                return true;
+            PortfolioLog.info("Search pattern check skipped: trade has no security"); //$NON-NLS-1$
+            return false;
         }
 
+        String[][] properties = new String[][] { { "name", security.getName() }, // //$NON-NLS-1$
+                        { "isin", security.getIsin() }, // //$NON-NLS-1$
+                        { "symbol", security.getTickerSymbol() }, // //$NON-NLS-1$
+                        { "wkn", security.getWkn() } // //$NON-NLS-1$
+        };
+
+        for (String[] property : properties)
+        {
+            String label = property[0];
+            String value = property[1];
+            if (value != null && filterPattern.matcher(value).matches())
+            {
+                PortfolioLog.info(String.format("Search pattern '%s' matched trade '%s' via %s '%s'", filterPattern, //$NON-NLS-1$
+                                security.getName(), label, value));
+                return true;
+            }
+        }
+
+        PortfolioLog.info(String.format(
+                        "Search pattern '%s' did not match trade '%s' (isin=%s, symbol=%s, wkn=%s)", filterPattern, //$NON-NLS-1$
+                        security.getName(), security.getIsin(), security.getTickerSymbol(), security.getWkn()));
         return false;
     }
 
