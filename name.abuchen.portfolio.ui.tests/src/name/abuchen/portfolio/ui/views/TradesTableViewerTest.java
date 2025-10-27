@@ -25,6 +25,9 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import org.eclipse.core.databinding.observable.Realm;
+import org.eclipse.jface.databinding.swt.DisplayRealm;
+
 import name.abuchen.portfolio.junit.AccountBuilder;
 import name.abuchen.portfolio.junit.PortfolioBuilder;
 import name.abuchen.portfolio.junit.SecurityBuilder;
@@ -54,12 +57,16 @@ import org.eclipse.jface.viewers.ColumnLabelProvider;
 import org.eclipse.jface.viewers.TableViewer;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Display;
 
 @SuppressWarnings("nls")
 public class TradesTableViewerTest
 {
     private static PortfolioPlugin previousPlugin;
     private static PortfolioPlugin testPlugin;
+    private static Display display;
+    private static boolean disposeDisplay;
+    private static Realm realm;
 
     @BeforeClass
     public static void ensurePreferenceStore() throws Exception
@@ -74,6 +81,8 @@ public class TradesTableViewerTest
         {
             ensurePreferenceStore(previousPlugin);
         }
+
+        ensureDisplayRealm();
     }
 
     @AfterClass
@@ -86,6 +95,15 @@ public class TradesTableViewerTest
             instanceField.set(null, previousPlugin);
             testPlugin = null;
         }
+
+        if (disposeDisplay && display != null && !display.isDisposed())
+        {
+            display.dispose();
+        }
+
+        display = null;
+        realm = null;
+        disposeDisplay = false;
     }
 
     private static void ensurePreferenceStore(PortfolioPlugin plugin) throws Exception
@@ -94,6 +112,58 @@ public class TradesTableViewerTest
         preferenceStoreField.setAccessible(true);
         if (preferenceStoreField.get(plugin) == null)
             preferenceStoreField.set(plugin, new PreferenceStore());
+    }
+
+    private static void ensureDisplayRealm()
+    {
+        if (display == null || display.isDisposed())
+        {
+            Display current = Display.getCurrent();
+            if (current != null && !current.isDisposed())
+            {
+                display = current;
+                disposeDisplay = false;
+            }
+            else
+            {
+                display = new Display();
+                disposeDisplay = true;
+            }
+        }
+
+        if (realm == null)
+            realm = DisplayRealm.getRealm(display);
+    }
+
+    private static void runWithDisplayRealm(ThrowingRunnable runnable) throws Exception
+    {
+        ensureDisplayRealm();
+
+        try
+        {
+            Realm.runWithDefault(realm, () -> {
+                try
+                {
+                    runnable.run();
+                }
+                catch (Exception e)
+                {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+        catch (RuntimeException e)
+        {
+            if (e.getCause() instanceof Exception exception)
+                throw exception;
+            throw e;
+        }
+    }
+
+    @FunctionalInterface
+    private interface ThrowingRunnable
+    {
+        void run() throws Exception;
     }
 
     @Test
@@ -269,66 +339,68 @@ public class TradesTableViewerTest
     @Test
     public void renamingSecurityRefreshesAllTradeElements() throws Exception
     {
-        Client client = new Client();
+        runWithDisplayRealm(() -> {
+            Client client = new Client();
 
-        Security security = new SecurityBuilder() //
-                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
-                        .addPrice("2020-02-01", Values.Quote.factorize(110)) //
-                        .addTo(client);
-        security.setName("Original");
+            Security security = new SecurityBuilder() //
+                            .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                            .addPrice("2020-02-01", Values.Quote.factorize(110)) //
+                            .addTo(client);
+            security.setName("Original");
 
-        Account account = new AccountBuilder() //
-                        .deposit_("2020-01-01", Values.Amount.factorize(20000)) //
-                        .addTo(client);
+            Account account = new AccountBuilder() //
+                            .deposit_("2020-01-01", Values.Amount.factorize(20000)) //
+                            .addTo(client);
 
-        new PortfolioBuilder(account) //
-                        .buy(security, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
-                        .sell(security, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
-                        .addTo(client);
+            new PortfolioBuilder(account) //
+                            .buy(security, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                            .sell(security, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                            .addTo(client);
 
-        TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
-        Trade trade = collector.collect(security).get(0);
+            TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
+            Trade trade = collector.collect(security).get(0);
 
-        TradesTableViewer viewer = new TradesTableViewer(new DummyFinanceView(client));
+            TradesTableViewer viewer = new TradesTableViewer(new DummyFinanceView(client));
 
-        TableViewer tableViewer = mock(TableViewer.class);
-        Field tradesField = TradesTableViewer.class.getDeclaredField("trades");
-        tradesField.setAccessible(true);
-        tradesField.set(viewer, tableViewer);
+            TableViewer tableViewer = mock(TableViewer.class);
+            Field tradesField = TradesTableViewer.class.getDeclaredField("trades");
+            tradesField.setAccessible(true);
+            tradesField.set(viewer, tableViewer);
 
-        ShowHideColumnHelper helper = mock(ShowHideColumnHelper.class);
-        List<Column> columns = new ArrayList<>();
-        doAnswer(invocation -> {
-            Column column = invocation.getArgument(0);
-            columns.add(column);
-            return null;
-        }).when(helper).addColumn(any(Column.class));
-        doAnswer(invocation -> columns.stream()).when(helper).getColumns();
+            ShowHideColumnHelper helper = mock(ShowHideColumnHelper.class);
+            List<Column> columns = new ArrayList<>();
+            doAnswer(invocation -> {
+                Column column = invocation.getArgument(0);
+                columns.add(column);
+                return null;
+            }).when(helper).addColumn(any(Column.class));
+            doAnswer(invocation -> columns.stream()).when(helper).getColumns();
 
-        Method method = TradesTableViewer.class.getDeclaredMethod("createTradesColumns", ShowHideColumnHelper.class,
-                        TradesTableViewer.ViewMode.class);
-        method.setAccessible(true);
-        method.invoke(viewer, helper, TradesTableViewer.ViewMode.MULTIPLE_SECURITIES);
+            Method method = TradesTableViewer.class.getDeclaredMethod("createTradesColumns", ShowHideColumnHelper.class,
+                            TradesTableViewer.ViewMode.class);
+            method.setAccessible(true);
+            method.invoke(viewer, helper, TradesTableViewer.ViewMode.MULTIPLE_SECURITIES);
 
-        Column nameColumn = columns.stream().filter(NameColumn.class::isInstance).findFirst().orElseThrow();
-        ColumnLabelProvider provider = (ColumnLabelProvider) nameColumn.getLabelProvider().get();
+            Column nameColumn = columns.stream().filter(NameColumn.class::isInstance).findFirst().orElseThrow();
+            ColumnLabelProvider provider = (ColumnLabelProvider) nameColumn.getLabelProvider().get();
 
-        List<TradeElement> elements = List.of(new TradeElement(trade, 0, 1.0), new TradeElement(trade, 1, 0.5));
-        List<String> renderedNames = elements.stream().map(provider::getText)
-                        .collect(Collectors.toCollection(ArrayList::new));
+            List<TradeElement> elements = List.of(new TradeElement(trade, 0, 1.0), new TradeElement(trade, 1, 0.5));
+            List<String> renderedNames = elements.stream().map(provider::getText)
+                            .collect(Collectors.toCollection(ArrayList::new));
 
-        assertThat(renderedNames, everyItem(is("Original")));
+            assertThat(renderedNames, everyItem(is("Original")));
 
-        doAnswer(invocation -> {
-            for (int i = 0; i < elements.size(); i++)
-                renderedNames.set(i, provider.getText(elements.get(i)));
-            return null;
-        }).when(tableViewer).refresh(true);
+            doAnswer(invocation -> {
+                for (int i = 0; i < elements.size(); i++)
+                    renderedNames.set(i, provider.getText(elements.get(i)));
+                return null;
+            }).when(tableViewer).refresh(true);
 
-        nameColumn.getEditingSupport().setValue(elements.get(0), "Renamed Security");
+            nameColumn.getEditingSupport().setValue(elements.get(0), "Renamed Security");
 
-        assertThat(renderedNames, everyItem(is("Renamed Security")));
-        verify(tableViewer).refresh(true);
+            assertThat(renderedNames, everyItem(is("Renamed Security")));
+            verify(tableViewer).refresh(true);
+        });
     }
 
     private static final class DummyFinanceView extends AbstractFinanceView
