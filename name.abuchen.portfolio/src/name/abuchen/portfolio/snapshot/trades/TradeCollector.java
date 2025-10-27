@@ -2,6 +2,7 @@ package name.abuchen.portfolio.snapshot.trades;
 
 import java.io.Serializable;
 import java.text.MessageFormat;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -108,6 +109,7 @@ public class TradeCollector
 
         List<Trade> trades = new ArrayList<>();
         Map<Portfolio, List<TransactionPair<PortfolioTransaction>>> openTransactions = new HashMap<>();
+        Map<Portfolio, ShortTradeAccumulator> openShortTrades = new HashMap<>();
 
         for (TransactionPair<?> txp : transactions)
         {
@@ -134,7 +136,29 @@ public class TradeCollector
                     if (openList.isEmpty() || openList.get(0).getTransaction().getType().isPurchase() == type.isPurchase())
                         openList.add(pair);
                     else
-                        trades.add(createNewTrade(openTransactions, pair));
+                    {
+                        Trade newTrade = createNewTrade(openTransactions, pair);
+
+                        if (!newTrade.isLong())
+                        {
+                            long remainingOpenShares = openList.stream() //
+                                            .mapToLong(p -> p.getTransaction().getShares()).sum();
+
+                            ShortTradeAccumulator accumulator = openShortTrades.computeIfAbsent(portfolio,
+                                            p -> new ShortTradeAccumulator(newTrade.getSecurity(), portfolio));
+                            accumulator.addPartialTrade(newTrade, remainingOpenShares);
+
+                            if (remainingOpenShares == 0)
+                            {
+                                trades.add(accumulator.buildCombinedTrade());
+                                openShortTrades.remove(portfolio);
+                            }
+                        }
+                        else
+                        {
+                            trades.add(newTrade);
+                        }
+                    }
                     break;
 
                 case TRANSFER_IN:
@@ -169,9 +193,61 @@ public class TradeCollector
             trades.add(newTrade);
         }
 
+        for (ShortTradeAccumulator accumulator : openShortTrades.values())
+        {
+            trades.addAll(accumulator.getPartialTrades());
+        }
+
         trades.forEach(t -> t.calculate(client, converter));
 
         return trades;
+    }
+
+    private static final class ShortTradeAccumulator
+    {
+        private final Security security;
+        private final Portfolio portfolio;
+        private final List<Trade> partialTrades = new ArrayList<>();
+        private final List<TransactionPair<PortfolioTransaction>> aggregatedTransactions = new ArrayList<>();
+        private LocalDateTime start;
+        private LocalDateTime end;
+        private long closedShares;
+        private long totalShares;
+
+        private ShortTradeAccumulator(Security security, Portfolio portfolio)
+        {
+            this.security = security;
+            this.portfolio = portfolio;
+        }
+
+        private void addPartialTrade(Trade partialTrade, long remainingOpenShares)
+        {
+            if (partialTrades.isEmpty())
+                this.start = partialTrade.getStart();
+
+            partialTrades.add(partialTrade);
+            aggregatedTransactions.addAll(partialTrade.getTransactions());
+
+            this.end = partialTrade.getEnd()
+                            .orElseGet(() -> partialTrade.getLastTransaction().getTransaction().getDateTime());
+
+            this.closedShares += partialTrade.getShares();
+            this.totalShares = this.closedShares + remainingOpenShares;
+        }
+
+        private Trade buildCombinedTrade()
+        {
+            Trade combined = new Trade(security, portfolio, totalShares);
+            combined.setStart(start);
+            combined.setEnd(end);
+            combined.getTransactions().addAll(aggregatedTransactions);
+            return combined;
+        }
+
+        private List<Trade> getPartialTrades()
+        {
+            return new ArrayList<>(partialTrades);
+        }
     }
 
     private Trade createNewTrade(Map<Portfolio, List<TransactionPair<PortfolioTransaction>>> openTransactions,
