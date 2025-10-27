@@ -55,6 +55,7 @@ import name.abuchen.portfolio.ui.util.viewers.ShowHideColumnHelper;
 
 import org.eclipse.jface.viewers.ColumnLabelProvider;
 import org.eclipse.jface.viewers.TableViewer;
+import org.eclipse.swt.SWTException;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
@@ -128,25 +129,25 @@ public class TradesTableViewerTest
         if (display != null)
             return;
 
-        Display defaultDisplay = Display.getDefault();
-        if (defaultDisplay != null && !defaultDisplay.isDisposed())
+        try
         {
-            display = defaultDisplay;
-            realm = DisplayRealm.getRealm(display);
-            weCreatedDisplay = false;
-        }
-        else
-        {
+            // 1. TRY to create a new Display. This thread will become the UI thread.
             display = new Display();
             realm = DisplayRealm.getRealm(display);
             weCreatedDisplay = true;
+        }
+        catch (SWTException e)
+        {
+            // 2. If it fails, one *already exists*. Get it and attach to it.
+            // We CANNOT call any methods on it from this thread.
+            display = Display.getDefault();
+            realm = DisplayRealm.getRealm(display);
+            weCreatedDisplay = false; // We are re-using it
         }
     }
 
     private void runWithDisplayRealm(ThrowingRunnable runnable) throws Exception
     {
-        setupDisplayRealm();
-
         Exception[] exception = new Exception[1];
 
         display.syncExec(() -> {
