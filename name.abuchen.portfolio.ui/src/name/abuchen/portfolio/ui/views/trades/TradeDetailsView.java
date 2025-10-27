@@ -52,7 +52,6 @@ import name.abuchen.portfolio.ui.util.DropDown;
 import name.abuchen.portfolio.ui.util.LabelOnly;
 import name.abuchen.portfolio.ui.util.SimpleAction;
 import name.abuchen.portfolio.ui.util.TableViewerCSVExporter;
-import name.abuchen.portfolio.util.TextUtil;
 import name.abuchen.portfolio.ui.views.SecurityContextMenu;
 import name.abuchen.portfolio.ui.views.TradesTableViewer;
 import name.abuchen.portfolio.ui.views.panes.HistoricalPricesPane;
@@ -61,6 +60,7 @@ import name.abuchen.portfolio.ui.views.panes.SecurityEventsPane;
 import name.abuchen.portfolio.ui.views.panes.SecurityPriceChartPane;
 import name.abuchen.portfolio.ui.views.panes.TransactionsPane;
 import name.abuchen.portfolio.util.Interval;
+import name.abuchen.portfolio.util.TextUtil;
 
 public class TradeDetailsView extends AbstractFinanceView
 {
@@ -352,7 +352,7 @@ public class TradeDetailsView extends AbstractFinanceView
                 search.addModifyListener(e -> {
                     var filterText = search.getText().trim();
                     searchPattern = compileSearchPattern(filterText);
-                    update();
+                    table.getTableViewer().refresh();
                 });
 
                 return search;
@@ -536,7 +536,7 @@ public class TradeDetailsView extends AbstractFinanceView
             Object element = selection.getFirstElement();
             Trade trade = element instanceof Trade ? (Trade) element
                             : element instanceof TradeElement ? ((TradeElement) element).getTrade() : null;
-                            
+
             if (trade != null)
                 new SecurityContextMenu(TradeDetailsView.this).handleEditKey(e, trade.getSecurity());
         }));
@@ -621,9 +621,9 @@ public class TradeDetailsView extends AbstractFinanceView
 
     /**
      * Flattens the taxonomy-grouped trades into a list of TradeElements for
-     * display in the table. Category rows are interleaved with trade rows.
-     * Uses sortOrder to keep categories as headers - category gets sortOrder N,
-     * then all its trades get sortOrder N+1 (same for all trades in that category).
+     * display in the table. Category rows are interleaved with trade rows. Uses
+     * sortOrder to keep categories as headers - category gets sortOrder N, then
+     * all its trades get sortOrder N+1 (same for all trades in that category).
      */
     private List<TradeElement> flattenToElements(TradesGroupedByTaxonomy groupedTrades)
     {
