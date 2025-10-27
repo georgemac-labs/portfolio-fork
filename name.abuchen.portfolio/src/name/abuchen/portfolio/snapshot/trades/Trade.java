@@ -298,15 +298,20 @@ public class Trade implements Adaptable
 
     public double getReturn()
     {
-        if (isLong())
-            return (exitValue.getAmount() / (double) entryValue.getAmount()) - 1;
-        else
-            return 1 - (exitValue.getAmount() / (double) entryValue.getAmount());
+        long entryAmount = entryValue.getAmount();
+        if (entryAmount == 0)
+            return 0;
+
+        return getProfitLoss().getAmount() / (double) entryAmount;
     }
 
     public double getReturnMovingAverage()
     {
-        return (exitValue.getAmount() / (double) entryValueMovingAverage.get().getAmount()) - 1;
+        long entryAmount = entryValueMovingAverage.get().getAmount();
+        if (entryAmount == 0)
+            return 0;
+
+        return getProfitLossMovingAverage().getAmount() / (double) entryAmount;
     }
 
     /**
