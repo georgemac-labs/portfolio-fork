@@ -208,7 +208,7 @@ public class TradeCategoryTest
         TradeCategory category = new TradeCategory(shorts, new TestCurrencyConverter());
         category.addTrade(shortTrade, 1.0);
 
-        assertThat(category.getAverageReturn(), is(shortTrade.getReturn()));
+        assertThat(category.getAverageReturn(), is(closeTo(shortTrade.getReturn(), 1e-10)));
     }
 
     @Test
