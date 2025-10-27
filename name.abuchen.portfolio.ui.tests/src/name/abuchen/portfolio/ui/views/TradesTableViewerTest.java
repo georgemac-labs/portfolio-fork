@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import org.eclipse.jface.preference.IPreferenceStore;
+import org.junit.Before;
 import org.junit.Test;
 
 import name.abuchen.portfolio.junit.AccountBuilder;
@@ -50,10 +52,28 @@ import org.eclipse.jface.viewers.ColumnLabelProvider;
 import org.eclipse.jface.viewers.TableViewer;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.junit.Before;
+
+import name.abuchen.portfolio.ui.PortfolioPlugin;
 
 @SuppressWarnings("nls")
 public class TradesTableViewerTest
 {
+    private static class TestPlugin extends PortfolioPlugin
+    {
+        @Override
+        public IPreferenceStore getPreferenceStore()
+        {
+            return mock(IPreferenceStore.class);
+        }
+    }
+
+    @Before
+    public void setUp()
+    {
+        PortfolioPlugin.setDefault(new TestPlugin());
+    }
+
     @Test
     public void tradeReturnIsNotWeightedWhenGroupedByTaxonomy() throws Exception
     {
@@ -314,6 +334,12 @@ public class TradesTableViewerTest
         public Client getClient()
         {
             return client;
+        }
+
+        @Override
+        public IPreferenceStore getPreferenceStore()
+        {
+            return mock(IPreferenceStore.class);
         }
     }
 }
