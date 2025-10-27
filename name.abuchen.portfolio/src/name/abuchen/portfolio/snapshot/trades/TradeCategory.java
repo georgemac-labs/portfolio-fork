@@ -292,8 +292,8 @@ public class TradeCategory
                 }
                 else if (!isLong)
                 {
-                    // for short trade, for the closing transaction, we look
-                    // how much collateral we should return
+                    // For short trades, the closing purchase 'amount' is negative.
+                    // The cash flow is the collateral returned minus the cost to close.
                     amount = collateral - amount;
                 }
 
