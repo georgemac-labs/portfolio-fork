@@ -359,6 +359,12 @@ public class TradeDetailsView extends AbstractFinanceView
                     {
                         PortfolioLog.info("Clearing trades search filter (empty text)"); //$NON-NLS-1$
                         filterPattern = null;
+                        PortfolioLog.info(String.format(
+                                        "Trades search invoking update (table initialised=%s, current viewer input=%s)", //$NON-NLS-1$
+                                        Boolean.valueOf(table != null),
+                                        table != null && table.getTableViewer().getInput() != null
+                                                        ? table.getTableViewer().getInput().getClass().getName()
+                                                        : "<none>")); //$NON-NLS-1$
                         update();
                     }
                     else
@@ -366,6 +372,12 @@ public class TradeDetailsView extends AbstractFinanceView
                         filterPattern = Pattern.compile(".*" + filterText + ".*", //$NON-NLS-1$ //$NON-NLS-2$
                                         Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
                         PortfolioLog.info(String.format("Trades search pattern applied: %s", filterPattern)); //$NON-NLS-1$
+                        PortfolioLog.info(String.format(
+                                        "Trades search invoking update (table initialised=%s, current viewer input=%s)", //$NON-NLS-1$
+                                        Boolean.valueOf(table != null),
+                                        table != null && table.getTableViewer().getInput() != null
+                                                        ? table.getTableViewer().getInput().getClass().getName()
+                                                        : "<none>")); //$NON-NLS-1$
                         update();
                     }
                 });
@@ -550,6 +562,12 @@ public class TradeDetailsView extends AbstractFinanceView
 
     private void update()
     {
+        if (table == null)
+        {
+            PortfolioLog.info("Trades update skipped: table viewer not yet created"); //$NON-NLS-1$
+            return;
+        }
+
         Input data = usePreselectedTrades.isTrue() ? input : collectAllTrades();
 
         List<Trade> trades = new ArrayList<>(data.getTrades());
@@ -592,11 +610,17 @@ public class TradeDetailsView extends AbstractFinanceView
         {
             TradesGroupedByTaxonomy groupedTrades = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
             table.setInput(flattenToElements(groupedTrades));
+            PortfolioLog.info(String.format("Trades viewer input set to taxonomy '%s'", taxonomy.getName())); //$NON-NLS-1$
         }
         else
         {
             table.setInput(trades);
+            PortfolioLog.info(String.format("Trades viewer input set to flat list (%d trades)", Integer.valueOf(trades.size()))); //$NON-NLS-1$
         }
+
+        int rowCount = table.getTableViewer().getTable().getItemCount();
+        PortfolioLog.info(String.format("Trades table currently renders %d rows (taxonomy=%s)", Integer.valueOf(rowCount), //$NON-NLS-1$
+                        taxonomy != null ? taxonomy.getName() : "<none>")); //$NON-NLS-1$
 
         ToolBarManager toolBar = getToolBarManager();
 
@@ -668,6 +692,7 @@ public class TradeDetailsView extends AbstractFinanceView
     {
         List<Trade> trades = new ArrayList<>();
         List<TradeCollectorException> errors = new ArrayList<>();
+        int processedSecurities = 0;
         getClient().getSecurities().forEach(s -> {
             try
             {
@@ -675,12 +700,21 @@ public class TradeDetailsView extends AbstractFinanceView
                                 useSecurityCurrency && s.getCurrencyCode() != null ? converter.with(s.getCurrencyCode())
                                                 : converter);
                 trades.addAll(collector.collect(s));
+                PortfolioLog.info(String.format("Collected trades for security '%s' -> running total %d", //$NON-NLS-1$
+                                s.getName(), Integer.valueOf(trades.size())));
             }
             catch (TradeCollectorException e)
             {
                 errors.add(e);
             }
+            finally
+            {
+                processedSecurities++;
+            }
         });
+
+        PortfolioLog.info(String.format("Finished collecting trades: %d securities processed, %d trades, %d errors", //$NON-NLS-1$
+                        Integer.valueOf(processedSecurities), Integer.valueOf(trades.size()), Integer.valueOf(errors.size())));
 
         return new Input(null, trades, errors, useSecurityCurrency);
     }
@@ -700,6 +734,8 @@ public class TradeDetailsView extends AbstractFinanceView
             elements.add(new TradeElement(totals, 0));
 
         int sortOrder = 1;
+        int categories = 0;
+        int tradeElements = elements.size();
 
         for (TradeCategory category : groupedTrades.asList())
         {
@@ -710,12 +746,14 @@ public class TradeDetailsView extends AbstractFinanceView
             // Add category row with current sortOrder
             elements.add(new TradeElement(category, sortOrder));
             sortOrder++;
+            categories++;
 
             // Add all trades in this category with the SAME sortOrder
             // This keeps them grouped together during sorting
             for (TradeAssignment assignment : category.getTradeAssignments())
             {
                 elements.add(new TradeElement(assignment.getTrade(), sortOrder, assignment.getWeight()));
+                tradeElements++;
             }
 
             // Increment sortOrder for next category
@@ -724,6 +762,11 @@ public class TradeDetailsView extends AbstractFinanceView
 
         if (!hideTotalsAtTheBottom)
             elements.add(new TradeElement(totals, Integer.MAX_VALUE));
+
+        PortfolioLog.info(String.format(
+                        "Trades taxonomy flattened: %d categories, %d trade rows, totalsTopHidden=%s, totalsBottomHidden=%s", //$NON-NLS-1$
+                        Integer.valueOf(categories), Integer.valueOf(tradeElements), Boolean.valueOf(hideTotalsAtTheTop),
+                        Boolean.valueOf(hideTotalsAtTheBottom)));
 
         return elements;
     }
