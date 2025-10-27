@@ -64,6 +64,10 @@ public class TradesTableViewerTest
 {
     private static PortfolioPlugin previousPlugin;
     private static PortfolioPlugin testPlugin;
+    private static Display display;
+    private static Realm realm;
+    private static boolean weCreatedDisplay;
+
     @BeforeClass
     public static void ensurePreferenceStore() throws Exception
     {
@@ -77,6 +81,8 @@ public class TradesTableViewerTest
         {
             ensurePreferenceStore(previousPlugin);
         }
+
+        setupDisplayRealm();
 
     }
 
@@ -93,6 +99,20 @@ public class TradesTableViewerTest
                 testPlugin = null;
             }
         }
+
+        if (display != null && !display.isDisposed())
+        {
+            display.syncExec(() -> {
+                if (weCreatedDisplay && !display.isDisposed())
+                {
+                    display.dispose();
+                }
+            });
+        }
+
+        display = null;
+        realm = null;
+        weCreatedDisplay = false;
     }
 
     private static void ensurePreferenceStore(PortfolioPlugin plugin) throws Exception
@@ -103,44 +123,60 @@ public class TradesTableViewerTest
             preferenceStoreField.set(plugin, new PreferenceStore());
     }
 
-    private void runWithDisplayRealm(ThrowingRunnable runnable) throws Exception
+    private static synchronized void setupDisplayRealm()
     {
-        Display threadDisplay = Display.getCurrent();
-        boolean weCreatedDisplay = false;
+        if (display != null)
+            return;
 
-        if (threadDisplay == null)
+        Display defaultDisplay = Display.getDefault();
+        if (defaultDisplay != null && !defaultDisplay.isDisposed())
         {
-            threadDisplay = new Display();
+            display = defaultDisplay;
+            realm = DisplayRealm.getRealm(display);
+            weCreatedDisplay = false;
+        }
+        else
+        {
+            display = new Display();
+            realm = DisplayRealm.getRealm(display);
             weCreatedDisplay = true;
         }
+    }
 
-        Realm threadRealm = DisplayRealm.getRealm(threadDisplay);
+    private void runWithDisplayRealm(ThrowingRunnable runnable) throws Exception
+    {
+        setupDisplayRealm();
 
-        try
-        {
-            Realm.runWithDefault(threadRealm, () -> {
-                try
-                {
-                    runnable.run();
-                }
-                catch (Exception e)
-                {
-                    throw new RuntimeException(e);
-                }
-            });
-        }
-        catch (RuntimeException e)
-        {
-            if (e.getCause() instanceof Exception exception)
-                throw exception;
-            throw e;
-        }
-        finally
-        {
-            if (weCreatedDisplay && threadDisplay != null && !threadDisplay.isDisposed())
+        Exception[] exception = new Exception[1];
+
+        display.syncExec(() -> {
+            try
             {
-                threadDisplay.dispose();
+                Realm.runWithDefault(realm, () -> {
+                    try
+                    {
+                        runnable.run();
+                    }
+                    catch (Exception e)
+                    {
+                        throw new RuntimeException(e);
+                    }
+                });
             }
+            catch (Exception e)
+            {
+                exception[0] = e;
+            }
+        });
+
+        if (exception[0] != null)
+        {
+            if (exception[0] instanceof RuntimeException runtimeException
+                            && runtimeException.getCause() instanceof Exception nested)
+            {
+                throw nested;
+            }
+            throw exception[0];
         }
     }
 
