@@ -132,6 +132,7 @@ public class StatementOfAssetsViewer
 
         private final IPreferenceStore preferences;
 
+        private final Taxonomy taxonomy;
         private final ClientFilter clientFilter;
         private final Client filteredClient;
         private CurrencyConverter converter;
@@ -154,6 +155,8 @@ public class StatementOfAssetsViewer
             this.clientFilter = filter;
             this.filteredClient = filter.filter(client);
             this.converter = converter;
+
+            this.taxonomy = taxonomy;
 
             this.globalInterval = Interval.of(LocalDate.MIN, date);
 
@@ -226,8 +229,13 @@ public class StatementOfAssetsViewer
 
             for (AssetCategory cat : groupByTaxonomy.asList())
             {
+                boolean isUnassignedCategory = Objects.equals(Classification.UNASSIGNED_ID,
+                                cat.getClassification().getId());
+                boolean hideCategory = taxonomy == null && isUnassignedCategory;
+
                 Element category = new Element(groupByTaxonomy, cat, sortOrder);
-                answer.add(category);
+                if (!hideCategory)
+                    answer.add(category);
                 totalTop.addChild(category);
                 totalBottom.addChild(category);
                 sortOrder++;
