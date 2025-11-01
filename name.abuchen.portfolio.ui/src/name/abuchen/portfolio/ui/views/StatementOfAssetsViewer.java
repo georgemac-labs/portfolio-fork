@@ -123,6 +123,8 @@ import name.abuchen.portfolio.util.TextUtil;
 
 public class StatementOfAssetsViewer
 {
+    private static final String PREFERENCE_NONE = StatementOfAssetsViewer.class.getName() + "@none"; //$NON-NLS-1$
+
     public static final class Model
     {
         private static final String TOP = Model.class.getSimpleName() + "@top"; //$NON-NLS-1$
@@ -337,9 +339,13 @@ public class StatementOfAssetsViewer
     @PostConstruct
     private void loadTaxonomy() // NOSONAR
     {
-        String taxonomyId = preference.getString(this.getClass().getSimpleName());
+        String preferenceKey = this.getClass().getSimpleName();
+        String taxonomyId = preference.getString(preferenceKey);
 
-        if (taxonomyId != null)
+        if (PREFERENCE_NONE.equals(taxonomyId))
+            return;
+
+        if (taxonomyId != null && !taxonomyId.isBlank())
         {
             for (Taxonomy t : client.getTaxonomies())
             {
@@ -1095,6 +1101,14 @@ public class StatementOfAssetsViewer
     public void menuAboutToShow(IMenuManager manager)
     {
         manager.add(new LabelOnly(Messages.LabelTaxonomies));
+
+        Action noneAction = new SimpleAction(Messages.LabelStatementOfAssetsTaxonomyNone, a -> {
+            taxonomy = null;
+            setInput(model.clientFilter, model.getDate(), model.getCurrencyConverter());
+        });
+        noneAction.setChecked(taxonomy == null);
+        manager.add(noneAction);
+
         for (final Taxonomy t : client.getTaxonomies())
         {
             Action action = new SimpleAction(TextUtil.tooltip(t.getName()), a -> {
@@ -1167,8 +1181,12 @@ public class StatementOfAssetsViewer
 
     private void widgetDisposed()
     {
+        String preferenceKey = this.getClass().getSimpleName();
+
         if (taxonomy != null)
-            preference.setValue(this.getClass().getSimpleName(), taxonomy.getId());
+            preference.setValue(preferenceKey, taxonomy.getId());
+        else
+            preference.setValue(preferenceKey, PREFERENCE_NONE);
 
         if (contextMenu != null)
             contextMenu.dispose();
