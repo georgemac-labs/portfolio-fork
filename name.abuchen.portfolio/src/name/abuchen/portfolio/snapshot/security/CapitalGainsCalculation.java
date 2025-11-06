@@ -45,7 +45,7 @@ import name.abuchen.portfolio.snapshot.trail.TrailRecord;
             this.date = Objects.requireNonNull(date);
             this.value = value;
             this.trail = trail;
-            this.originalShares = shares;
+            this.originalShares = Math.abs(shares);
             this.source = source;
         }
     }
@@ -96,16 +96,86 @@ import name.abuchen.portfolio.snapshot.trail.TrailRecord;
         {
             case BUY:
             case DELIVERY_INBOUND:
-                fifo.add(new LineItem(t.getShares(), t.getDateTime().toLocalDate(), convertedGrossValue.getAmount(),
-                                txTrail, transactionItem));
+                long bought = t.getShares();
+                long remainingShares = bought;
+                long consumedCost = 0L;
+                LineItem lastShortMatch = null;
+
+                for (LineItem item : fifo) // NOSONAR
+                {
+                    if (remainingShares <= 0)
+                        break;
+
+                    if (item.shares >= 0)
+                        continue;
+
+                    if (!item.source.getOwner().equals(transactionItem.getOwner()))
+                        continue;
+
+                    long availableShares = Math.abs(item.shares);
+                    long coveredShares = Math.min(remainingShares, availableShares);
+                    long remainingSharesBefore = remainingShares;
+
+                    long start = Math.round((double) coveredShares / availableShares * -item.value);
+                    long end;
+                    if (coveredShares == remainingSharesBefore)
+                        end = convertedGrossValue.getAmount() - consumedCost;
+                    else
+                        end = Math.round((double) coveredShares / bought * convertedGrossValue.getAmount());
+
+                    TrailRecord startTrail = item.trail.fraction(Money.of(termCurrency, start), coveredShares,
+                                    item.originalShares);
+                    TrailRecord endTrail = txTrail.fraction(Money.of(termCurrency, end), coveredShares, bought);
+
+                    long forexGain = 0L;
+                    TrailRecord forexGainTrail = TrailRecord.empty();
+
+                    if (!termCurrency.equals(t.getSecurity().getCurrencyCode()))
+                    {
+                        CurrencyConverter convert2forex = converter.with(t.getSecurity().getCurrencyCode());
+
+                        Money forex = convert2forex.convert(item.date, Money.of(termCurrency, start));
+                        Money back = forex.with(converter.at(t.getDateTime()));
+                        forexGain = start - back.getAmount();
+
+                        TrailRecord convertedTrail = startTrail
+                                        .convert(forex, convert2forex.getRate(item.date, termCurrency))
+                                        .convert(back, converter.getRate(t.getDateTime(),
+                                                        t.getSecurity().getCurrencyCode()));
+                        forexGainTrail = startTrail.subtract(convertedTrail);
+                    }
+
+                    realizedCapitalGains.addCapitalGains(Money.of(termCurrency, start - end));
+                    realizedCapitalGains.addCapitalGainsTrail(startTrail.subtract(endTrail));
+                    realizedCapitalGains.addForexCaptialGains(Money.of(termCurrency, forexGain));
+                    realizedCapitalGains.addForexCapitalGainsTrail(forexGainTrail);
+
+                    item.shares += coveredShares;
+                    item.value += start;
+
+                    consumedCost += end;
+                    remainingShares -= coveredShares;
+                    lastShortMatch = item;
+                }
+
+                long remainingValue = convertedGrossValue.getAmount() - consumedCost;
+
+                if (remainingShares > 0)
+                {
+                    fifo.add(new LineItem(remainingShares, t.getDateTime().toLocalDate(), remainingValue, txTrail,
+                                    transactionItem));
+                }
+                else if (lastShortMatch != null && remainingValue != 0)
+                {
+                    lastShortMatch.value += remainingValue;
+                }
                 break;
 
             case SELL:
             case DELIVERY_OUTBOUND:
 
-                long value = convertedGrossValue.getAmount();
-
                 long sold = t.getShares();
+                long consumedProceeds = 0L;
 
                 for (LineItem item : fifo) // NOSONAR
                 {
@@ -118,12 +188,21 @@ import name.abuchen.portfolio.snapshot.trail.TrailRecord;
                     if (sold <= 0)
                         break;
 
+                    if (item.shares <= 0)
+                        continue;
+
                     long soldShares = Math.min(sold, item.shares);
+                    long remainingSharesBefore = sold;
                     long start = Math.round((double) soldShares / item.shares * item.value);
-                    long end = Math.round((double) soldShares / t.getShares() * value);
+                    long end;
+                    if (soldShares == remainingSharesBefore)
+                        end = convertedGrossValue.getAmount() - consumedProceeds;
+                    else
+                        end = Math.round((double) soldShares / t.getShares() * convertedGrossValue.getAmount());
 
                     TrailRecord startTrail = item.trail.fraction(Money.of(termCurrency, start), soldShares,
                                     item.originalShares);
+                    TrailRecord endTrail = txTrail.fraction(Money.of(termCurrency, end), soldShares, t.getShares());
 
                     long forexGain = 0L;
                     TrailRecord forexGainTrail = TrailRecord.empty();
@@ -150,9 +229,7 @@ import name.abuchen.portfolio.snapshot.trail.TrailRecord;
                     }
 
                     realizedCapitalGains.addCapitalGains(Money.of(termCurrency, end - start));
-                    realizedCapitalGains.addCapitalGainsTrail(txTrail //
-                                    .fraction(Money.of(termCurrency, end), soldShares, t.getShares())
-                                    .subtract(startTrail));
+                    realizedCapitalGains.addCapitalGainsTrail(endTrail.subtract(startTrail));
                     realizedCapitalGains.addForexCaptialGains(Money.of(termCurrency, forexGain));
                     realizedCapitalGains.addForexCapitalGainsTrail(forexGainTrail);
 
@@ -160,14 +237,16 @@ import name.abuchen.portfolio.snapshot.trail.TrailRecord;
                     item.value -= start;
 
                     sold -= soldShares;
+                    consumedProceeds += end;
                 }
 
                 if (sold > 0)
                 {
-                    // Report that more was sold than bought to log
-                    PortfolioLog.warning(MessageFormat.format(Messages.MsgNegativeHoldingsDuringFIFOCostCalculation,
-                                    Values.Share.format(sold), t.getSecurity().getName(),
-                                    Values.DateTime.format(t.getDateTime())));
+                    long remainingProceeds = convertedGrossValue.getAmount() - consumedProceeds;
+                    TrailRecord shortTrail = txTrail.fraction(Money.of(termCurrency, remainingProceeds), sold,
+                                    t.getShares());
+                    fifo.add(new LineItem(-sold, t.getDateTime().toLocalDate(), -remainingProceeds, shortTrail,
+                                    transactionItem));
                 }
 
                 break;
@@ -277,8 +356,8 @@ import name.abuchen.portfolio.snapshot.trail.TrailRecord;
         long start = fifo.stream().mapToLong(item -> item.value).sum();
 
         TrailRecord startTrail = TrailRecord.of(fifo.stream() //
-                        .filter(item -> item.shares != 0).map(item -> item.trail
-                                        .fraction(Money.of(termCurrency, item.value), item.shares, item.originalShares))
+                        .filter(item -> item.shares != 0).map(item -> item.trail.fraction(
+                                        Money.of(termCurrency, item.value), Math.abs(item.shares), item.originalShares))
                         .collect(Collectors.toList()));
 
         // end value (based on the security positions)
@@ -325,7 +404,7 @@ import name.abuchen.portfolio.snapshot.trail.TrailRecord;
             forexGainTrail = TrailRecord.of(fifo.stream() //
                             .filter(item -> item.value != 0) //
                             .map(item -> item.trail
-                                            .fraction(Money.of(termCurrency, item.value), item.shares,
+                                            .fraction(Money.of(termCurrency, item.value), Math.abs(item.shares),
                                                             item.originalShares)
                                             .convert(convert2Forex.convert(item.date,
                                                             Money.of(termCurrency, item.value)),
@@ -362,7 +441,7 @@ import name.abuchen.portfolio.snapshot.trail.TrailRecord;
 
         List<LineItem> itemsToSquash = fifo.stream()
                         .filter(item -> item.source instanceof CalculationLineItem.ValuationAtStart)
-                        .filter(item -> item.shares == item.originalShares) //
+                        .filter(item -> Math.abs(item.shares) == item.originalShares) //
                         .collect(Collectors.toList());
 
         if (itemsToSquash.size() < 2)

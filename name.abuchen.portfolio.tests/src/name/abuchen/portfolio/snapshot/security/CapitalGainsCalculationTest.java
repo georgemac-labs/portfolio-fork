@@ -14,11 +14,14 @@ import name.abuchen.portfolio.junit.PortfolioBuilder;
 import name.abuchen.portfolio.junit.SecurityBuilder;
 import name.abuchen.portfolio.junit.TestCurrencyConverter;
 import name.abuchen.portfolio.model.Account;
+import name.abuchen.portfolio.model.BuySellEntry;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Portfolio;
+import name.abuchen.portfolio.model.PortfolioTransaction;
 import name.abuchen.portfolio.model.PortfolioTransferEntry;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.model.Transaction;
+import name.abuchen.portfolio.money.CurrencyConverter;
 import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.Values;
@@ -245,5 +248,96 @@ public class CapitalGainsCalculationTest
         assertThat(realizedUsingMovingAverage.getForexCaptialGains(),
                         is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(-97.54))));
 
+    }
+
+    @Test
+    public void testShortSaleRealizedAndUnrealizedGains()
+    {
+        Client client = new Client();
+
+        Security security = new SecurityBuilder().addPrice("2024-12-31", Values.Quote.factorize(60)).addTo(client);
+
+        new PortfolioBuilder() //
+                        .sell(security, "2024-01-02", Values.Share.factorize(10), Values.Amount.factorize(1000)) //
+                        .buy(security, "2024-01-10", Values.Share.factorize(4), Values.Amount.factorize(320)) //
+                        .buy(security, "2024-01-15", Values.Share.factorize(3), Values.Amount.factorize(210)) //
+                        .addTo(client);
+
+        var interval = Interval.of(LocalDate.parse("2023-12-31"), LocalDate.parse("2024-12-31"));
+        SecurityPerformanceSnapshot snapshot = SecurityPerformanceSnapshot.create(client, new TestCurrencyConverter(),
+                        interval);
+        SecurityPerformanceRecord record = snapshot.getRecord(security).orElseThrow(IllegalArgumentException::new);
+
+        assertThat(record.getRealizedCapitalGains().getCapitalGains(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(170))));
+        assertThat(record.getRealizedCapitalGains().getForexCaptialGains(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(0))));
+
+        CapitalGainsRecord unrealized = record.getUnrealizedCapitalGains();
+        assertThat(unrealized.getCapitalGains(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(120))));
+        assertThat(unrealized.getForexCaptialGains(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(0))));
+    }
+
+    @Test
+    public void testShortSaleWithForexRealizedAndUnrealizedGains()
+    {
+        Client client = new Client();
+        client.setBaseCurrency(CurrencyUnit.EUR);
+
+        Security security = new SecurityBuilder(CurrencyUnit.USD) //
+                        .addPrice("2015-01-16", Values.Quote.factorize(90)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder(CurrencyUnit.EUR) //
+                        .deposit_("2015-01-01", Values.Amount.factorize(2000)) //
+                        .addTo(client);
+
+        Portfolio portfolio = new PortfolioBuilder(account).addTo(client);
+
+        CurrencyConverter converter = new TestCurrencyConverter();
+
+        BuySellEntry shortSale = new BuySellEntry(portfolio, account);
+        shortSale.setType(PortfolioTransaction.Type.SELL);
+        shortSale.setSecurity(security);
+        shortSale.setDate(LocalDateTime.parse("2015-01-06T00:00"));
+        shortSale.setShares(Values.Share.factorize(8));
+        Money saleAmount = Money.of(CurrencyUnit.EUR, Values.Amount.factorize(738.63));
+        shortSale.setMonetaryAmount(saleAmount);
+        shortSale.getPortfolioTransaction()
+                        .addUnit(new Transaction.Unit(Transaction.Unit.Type.GROSS_VALUE, saleAmount,
+                                        Money.of(CurrencyUnit.USD, Values.Amount.factorize(880)),
+                                        BigDecimal.valueOf(1.1914)));
+        shortSale.insert();
+
+        BuySellEntry cover = new BuySellEntry(portfolio, account);
+        cover.setType(PortfolioTransaction.Type.BUY);
+        cover.setSecurity(security);
+        cover.setDate(LocalDateTime.parse("2015-01-09T00:00"));
+        cover.setShares(Values.Share.factorize(5));
+        Money coverAmount = Money.of(CurrencyUnit.EUR, Values.Amount.factorize(423.26));
+        cover.setMonetaryAmount(coverAmount);
+        cover.getPortfolioTransaction()
+                        .addUnit(new Transaction.Unit(Transaction.Unit.Type.GROSS_VALUE, coverAmount,
+                                        Money.of(CurrencyUnit.USD, Values.Amount.factorize(500)),
+                                        BigDecimal.valueOf(1.1813)));
+        cover.insert();
+
+        var interval = Interval.of(LocalDate.parse("2015-01-05"), LocalDate.parse("2015-12-31"));
+        SecurityPerformanceSnapshot snapshot = SecurityPerformanceSnapshot.create(client, converter, interval);
+        SecurityPerformanceRecord record = snapshot.getRecord(security).orElseThrow(IllegalArgumentException::new);
+
+        CapitalGainsRecord realized = record.getRealizedCapitalGains();
+        assertThat(realized.getCapitalGains(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(38.38))));
+        assertThat(realized.getForexCaptialGains(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(-3.95))));
+
+        CapitalGainsRecord unrealized = record.getUnrealizedCapitalGains();
+        assertThat(unrealized.getCapitalGains(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(43.99))));
+        assertThat(unrealized.getForexCaptialGains(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(-7.80))));
     }
 }

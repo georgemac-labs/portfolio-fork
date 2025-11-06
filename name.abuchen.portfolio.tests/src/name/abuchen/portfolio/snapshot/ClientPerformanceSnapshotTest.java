@@ -699,10 +699,18 @@ public class ClientPerformanceSnapshotTest
         ClientPerformanceSnapshot snapshot = new ClientPerformanceSnapshot(client, converter,
                         LocalDate.parse("2015-01-05"), LocalDate.parse("2016-01-01"));
 
-        // calculation does not work out b/c of the short sale!
-
         assertThat(snapshot.getEndClientSnapshot().getPositionsByVehicle().get(client.getSecurities().get(0))
                         .getPosition().getShares(), is(Values.Share.factorize(-1)));
+
+        assertThat(snapshot.getValue(CategoryType.REALIZED_CAPITAL_GAINS),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(100.0))));
+        assertThat(snapshot.getCategoryByType(CategoryType.REALIZED_CAPITAL_GAINS).getPositions().get(0).getForexGain(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(17.52))));
+
+        assertThat(snapshot.getValue(CategoryType.CAPITAL_GAINS),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(-3.56))));
+        assertThat(snapshot.getCategoryByType(CategoryType.CAPITAL_GAINS).getPositions().get(0).getForexGain(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(-1.94))));
     }
 
     public static void assertThatCalculationWorksOut(ClientPerformanceSnapshot snapshot, CurrencyConverter converter)
