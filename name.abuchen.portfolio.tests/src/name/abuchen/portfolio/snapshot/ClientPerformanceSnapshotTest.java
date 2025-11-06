@@ -35,6 +35,9 @@ import name.abuchen.portfolio.money.MutableMoney;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot.Category;
 import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot.CategoryType;
+import name.abuchen.portfolio.snapshot.security.SecurityPerformanceRecord;
+import name.abuchen.portfolio.snapshot.security.SecurityPerformanceSnapshot;
+import name.abuchen.portfolio.util.Interval;
 
 @SuppressWarnings("nls")
 public class ClientPerformanceSnapshotTest
@@ -694,23 +697,38 @@ public class ClientPerformanceSnapshotTest
         CurrencyConverter converter = new TestCurrencyConverter();
         Client client = buildClientWithSaleAndPurchaseInForex(converter, 10, 11);
 
+        var interval = Interval.of(LocalDate.parse("2015-01-05"), LocalDate.parse("2016-01-01"));
+        Security security = client.getSecurities().get(0);
+
+        SecurityPerformanceSnapshot securitySnapshot = SecurityPerformanceSnapshot.create(client, converter, interval);
+        SecurityPerformanceRecord record = securitySnapshot.getRecord(security)
+                        .orElseThrow(IllegalArgumentException::new);
+
         // code under test
 
-        ClientPerformanceSnapshot snapshot = new ClientPerformanceSnapshot(client, converter,
-                        LocalDate.parse("2015-01-05"), LocalDate.parse("2016-01-01"));
+        ClientPerformanceSnapshot snapshot = new ClientPerformanceSnapshot(client, converter, interval.getStart(),
+                        interval.getEnd());
 
-        assertThat(snapshot.getEndClientSnapshot().getPositionsByVehicle().get(client.getSecurities().get(0))
-                        .getPosition().getShares(), is(Values.Share.factorize(-1)));
+        assertThat(snapshot.getEndClientSnapshot().getPositionsByVehicle().get(security).getPosition().getShares(),
+                        is(Values.Share.factorize(-1)));
 
         assertThat(snapshot.getValue(CategoryType.REALIZED_CAPITAL_GAINS),
-                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(100.0))));
-        assertThat(snapshot.getCategoryByType(CategoryType.REALIZED_CAPITAL_GAINS).getPositions().get(0).getForexGain(),
-                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(17.52))));
+                        is(record.getRealizedCapitalGains().getCapitalGains()));
+
+        ClientPerformanceSnapshot.Position realizedPosition = snapshot
+                        .getCategoryByType(CategoryType.REALIZED_CAPITAL_GAINS).getPositions().stream()
+                        .filter(position -> security.equals(position.getSecurity())).findFirst()
+                        .orElseThrow(IllegalStateException::new);
+        assertThat(realizedPosition.getForexGain(), is(record.getRealizedCapitalGains().getForexCaptialGains()));
 
         assertThat(snapshot.getValue(CategoryType.CAPITAL_GAINS),
-                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(-3.56))));
-        assertThat(snapshot.getCategoryByType(CategoryType.CAPITAL_GAINS).getPositions().get(0).getForexGain(),
-                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(-1.94))));
+                        is(record.getUnrealizedCapitalGains().getCapitalGains()));
+
+        ClientPerformanceSnapshot.Position unrealizedPosition = snapshot
+                        .getCategoryByType(CategoryType.CAPITAL_GAINS).getPositions().stream()
+                        .filter(position -> security.equals(position.getSecurity())).findFirst()
+                        .orElseThrow(IllegalStateException::new);
+        assertThat(unrealizedPosition.getForexGain(), is(record.getUnrealizedCapitalGains().getForexCaptialGains()));
     }
 
     public static void assertThatCalculationWorksOut(ClientPerformanceSnapshot snapshot, CurrencyConverter converter)

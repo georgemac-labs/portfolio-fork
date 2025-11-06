@@ -4,6 +4,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -303,7 +304,7 @@ public class CapitalGainsCalculationTest
         assertThat(realized.getCapitalGains(), is(expected));
         assertThat(realized.getCapitalGainsTrail().getValue(), is(expected));
         assertThat(realized.getForexCaptialGains(), is(Money.of(CurrencyUnit.EUR, 0)));
-        assertThat(realized.getForexCapitalGainsTrail().getValue(), is(Money.of(CurrencyUnit.EUR, 0)));
+        assertThat(realized.getForexCapitalGainsTrail().isEmpty(), is(true));
     }
 
     @Test
@@ -331,10 +332,13 @@ public class CapitalGainsCalculationTest
         shortSale.setShares(Values.Share.factorize(8));
         Money saleAmount = Money.of(CurrencyUnit.EUR, Values.Amount.factorize(738.63));
         shortSale.setMonetaryAmount(saleAmount);
+        Money saleForex = Money.of(CurrencyUnit.USD, Values.Amount.factorize(880));
+        BigDecimal saleRate = BigDecimal.valueOf(saleAmount.getAmount())
+                        .divide(BigDecimal.valueOf(saleForex.getAmount()), Values.MC)
+                        .setScale(10, RoundingMode.HALF_UP);
         shortSale.getPortfolioTransaction()
-                        .addUnit(new Transaction.Unit(Transaction.Unit.Type.GROSS_VALUE, saleAmount,
-                                        Money.of(CurrencyUnit.USD, Values.Amount.factorize(880)),
-                                        BigDecimal.valueOf(1.1914)));
+                        .addUnit(new Transaction.Unit(Transaction.Unit.Type.GROSS_VALUE, saleAmount, saleForex,
+                                        saleRate));
         shortSale.insert();
 
         BuySellEntry cover = new BuySellEntry(portfolio, account);
@@ -344,10 +348,13 @@ public class CapitalGainsCalculationTest
         cover.setShares(Values.Share.factorize(5));
         Money coverAmount = Money.of(CurrencyUnit.EUR, Values.Amount.factorize(423.26));
         cover.setMonetaryAmount(coverAmount);
+        Money coverForex = Money.of(CurrencyUnit.USD, Values.Amount.factorize(500));
+        BigDecimal coverRate = BigDecimal.valueOf(coverAmount.getAmount())
+                        .divide(BigDecimal.valueOf(coverForex.getAmount()), Values.MC)
+                        .setScale(10, RoundingMode.HALF_UP);
         cover.getPortfolioTransaction()
-                        .addUnit(new Transaction.Unit(Transaction.Unit.Type.GROSS_VALUE, coverAmount,
-                                        Money.of(CurrencyUnit.USD, Values.Amount.factorize(500)),
-                                        BigDecimal.valueOf(1.1813)));
+                        .addUnit(new Transaction.Unit(Transaction.Unit.Type.GROSS_VALUE, coverAmount, coverForex,
+                                        coverRate));
         cover.insert();
 
         var interval = Interval.of(LocalDate.parse("2015-01-05"), LocalDate.parse("2015-12-31"));
