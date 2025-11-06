@@ -68,10 +68,12 @@ import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.MutableMoney;
 import name.abuchen.portfolio.money.Values;
+import name.abuchen.portfolio.snapshot.PerformanceIndex;
 import name.abuchen.portfolio.snapshot.security.BaseSecurityPerformanceRecord;
 import name.abuchen.portfolio.snapshot.filter.ClientClassificationFilter;
 import name.abuchen.portfolio.snapshot.security.LazySecurityPerformanceRecord;
 import name.abuchen.portfolio.snapshot.security.LazySecurityPerformanceSnapshot;
+import name.abuchen.portfolio.snapshot.security.LazySecurityPerformanceRecord.LazyValue;
 import name.abuchen.portfolio.snapshot.trail.Trail;
 import name.abuchen.portfolio.snapshot.trail.TrailProvider;
 import name.abuchen.portfolio.ui.Images;
@@ -192,6 +194,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
     {
         private static final String TOP = SecuritiesPerformanceView.class.getSimpleName() + "@top"; //$NON-NLS-1$
         private static final String BOTTOM = SecuritiesPerformanceView.class.getSimpleName() + "@bottom"; //$NON-NLS-1$
+        private static final String TOTAL = SecuritiesPerformanceView.class.getSimpleName() + "@total"; //$NON-NLS-1$
 
         private final Client filteredClient;
         private final CurrencyConverter converter;
@@ -201,6 +204,8 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         private final Map<String, AggregateRow> filter2aggregates = new HashMap<>();
         private final Map<String, AggregateRow> predicate2cache = new HashMap<>();
         private final Map<String, AggregateRow> classification2aggregates = new HashMap<>();
+        private final Map<String, LazyValue<PerformanceIndex>> classification2performance = new HashMap<>();
+        private final Map<String, Map<String, LazyValue<PerformanceIndex>>> filter2classificationPerformance = new HashMap<>();
 
         private boolean hideTotalsAtTheTop;
         private boolean hideTotalsAtTheBottom;
@@ -299,6 +304,39 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
 
                 return new AggregateRow(answer);
             });
+        }
+
+        private String classificationKey(Classification classification)
+        {
+            return classification != null ? classification.getId() : TOTAL;
+        }
+
+        public PerformanceIndex getPerformanceIndex(Classification classification)
+        {
+            return classification2performance
+                            .computeIfAbsent(classificationKey(classification), key -> new LazyValue<>(
+                                            () -> computePerformanceIndex(filteredClient, converter, classification)))
+                            .get();
+        }
+
+        public PerformanceIndex getPerformanceIndex(Classification classification, ClientFilterMenu.Item filterItem)
+        {
+            var cache = filter2classificationPerformance.computeIfAbsent(filterItem.getId(), id -> new HashMap<>());
+            return cache.computeIfAbsent(classificationKey(classification), key -> new LazyValue<>(() -> {
+                Client client = filterItem.getFilter().filter(SecuritiesPerformanceView.this.getClient());
+                CurrencyConverter filterConverter = new CurrencyConverterImpl(factory,
+                                SecuritiesPerformanceView.this.getClient().getBaseCurrency());
+                return computePerformanceIndex(client, filterConverter, classification);
+            })).get();
+        }
+
+        private PerformanceIndex computePerformanceIndex(Client client, CurrencyConverter converter,
+                        Classification classification)
+        {
+            List<Exception> warnings = new ArrayList<>();
+            if (classification != null)
+                return PerformanceIndex.forClassification(client, converter, classification, period, warnings);
+            return PerformanceIndex.forClient(client, converter, period, warnings);
         }
 
         /**
@@ -519,6 +557,11 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             return performanceRecord != null;
         }
 
+        public boolean isAggregate()
+        {
+            return aggregateSupplier != null;
+        }
+
         public boolean isCategory()
         {
             return performanceRecord == null && aggregateSupplier != null && classification != null;
@@ -532,6 +575,20 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         public AggregateRow getAggregate()
         {
             return aggregateSupplier != null ? aggregateSupplier.get() : null;
+        }
+
+        public PerformanceIndex getPerformanceIndex()
+        {
+            if (!isAggregate())
+                return null;
+            return model.getPerformanceIndex(classification);
+        }
+
+        public PerformanceIndex getPerformanceIndex(ClientFilterMenu.Item filterItem)
+        {
+            if (!isAggregate())
+                return null;
+            return model.getPerformanceIndex(classification, filterItem);
         }
 
         @Override
@@ -591,42 +648,72 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
      */
     private class RowElementLabelProvider extends ColumnLabelProvider
     {
+        @FunctionalInterface
+        private interface RowAggregateFunction
+        {
+            String apply(RowElement row);
+        }
+
         private final ColumnLabelProvider recordLabelProvider;
-        private final Function<AggregateRow, String> aggregateLabelProvider;
+        private final RowAggregateFunction aggregateLabelProvider;
 
         public RowElementLabelProvider(ColumnLabelProvider recordLabelProvider,
-                        Function<AggregateRow, String> aggregateLabelProvider)
+                        RowAggregateFunction aggregateLabelProvider)
         {
             this.recordLabelProvider = recordLabelProvider;
             this.aggregateLabelProvider = aggregateLabelProvider;
         }
 
+        public RowElementLabelProvider(ColumnLabelProvider recordLabelProvider,
+                        Function<AggregateRow, String> aggregateLabelProvider)
+        {
+            this(recordLabelProvider, aggregateLabelProvider == null ? null : row -> {
+                AggregateRow aggregate = row.getAggregate();
+                return aggregate != null ? aggregateLabelProvider.apply(aggregate) : null;
+            });
+        }
+
         public RowElementLabelProvider(ColumnLabelProvider recordLabelProvider)
         {
-            this.recordLabelProvider = recordLabelProvider;
-            this.aggregateLabelProvider = null;
+            this(recordLabelProvider, (RowAggregateFunction) null);
         }
 
         public RowElementLabelProvider(Function<LazySecurityPerformanceRecord, String> recordLabelProvider)
         {
-            this(ColumnLabelProvider.createTextProvider(
-                            object -> recordLabelProvider.apply((LazySecurityPerformanceRecord) object)));
+            this(recordLabelProvider, (RowAggregateFunction) null);
         }
 
         public RowElementLabelProvider(Function<LazySecurityPerformanceRecord, String> recordLabelProvider,
-                        Function<AggregateRow, String> aggregateLabelProvider)
+                        RowAggregateFunction aggregateLabelProvider)
         {
             this(ColumnLabelProvider.createTextProvider(
                             object -> recordLabelProvider.apply((LazySecurityPerformanceRecord) object)),
                             aggregateLabelProvider);
         }
 
+        public RowElementLabelProvider(Function<LazySecurityPerformanceRecord, String> recordLabelProvider,
+                        Function<AggregateRow, String> aggregateLabelProvider)
+        {
+            this(recordLabelProvider, aggregateLabelProvider == null ? null : row -> {
+                AggregateRow aggregate = row.getAggregate();
+                return aggregate != null ? aggregateLabelProvider.apply(aggregate) : null;
+            });
+        }
+
         public RowElementLabelProvider(Column column)
         {
-            this((ColumnLabelProvider) column.getLabelProvider().get(), null);
+            this((ColumnLabelProvider) column.getLabelProvider().get(), (RowAggregateFunction) null);
         }
 
         public RowElementLabelProvider(Column column, Function<AggregateRow, String> aggregateLabelProvider)
+        {
+            this((ColumnLabelProvider) column.getLabelProvider().get(), aggregateLabelProvider == null ? null : row -> {
+                AggregateRow aggregate = row.getAggregate();
+                return aggregate != null ? aggregateLabelProvider.apply(aggregate) : null;
+            });
+        }
+
+        public RowElementLabelProvider(Column column, RowAggregateFunction aggregateLabelProvider)
         {
             this((ColumnLabelProvider) column.getLabelProvider().get(), aggregateLabelProvider);
         }
@@ -668,10 +755,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             if (row.performanceRecord != null)
                 return recordLabelProvider.getText(row.performanceRecord);
             else if (aggregateLabelProvider != null)
-            {
-                AggregateRow aggregate = row.getAggregate();
-                return aggregate != null ? aggregateLabelProvider.apply(aggregate) : null;
-            }
+                return aggregateLabelProvider.apply(row);
             else
                 return null;
         }
@@ -705,18 +789,31 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
     private class RowElementOptionLabelProvider extends OptionLabelProvider<ClientFilterMenu.Item>
     {
         private final Function<LazySecurityPerformanceRecord, String> recordLabelProvider;
-        private final Function<AggregateRow, String> aggregateLabelProvider;
+        @FunctionalInterface
+        private interface RowOptionAggregateFunction
+        {
+            String apply(RowElement row, ClientFilterMenu.Item option);
+        }
+
+        private final RowOptionAggregateFunction aggregateLabelProvider;
 
         public RowElementOptionLabelProvider(Function<LazySecurityPerformanceRecord, String> recordLabelProvider,
-                        Function<AggregateRow, String> aggregateLabelProvider)
+                        RowOptionAggregateFunction aggregateLabelProvider)
         {
             this.recordLabelProvider = recordLabelProvider;
             this.aggregateLabelProvider = aggregateLabelProvider;
         }
 
+        public RowElementOptionLabelProvider(Function<LazySecurityPerformanceRecord, String> recordLabelProvider,
+                        Function<AggregateRow, String> aggregateLabelProvider)
+        {
+            this(recordLabelProvider, aggregateLabelProvider == null ? null
+                            : (row, option) -> aggregateLabelProvider.apply(row.model.getFilteredAggregate(option)));
+        }
+
         public RowElementOptionLabelProvider(Function<LazySecurityPerformanceRecord, String> recordLabelProvider)
         {
-            this(recordLabelProvider, null);
+            this(recordLabelProvider, (RowOptionAggregateFunction) null);
         }
 
         @Override
@@ -731,7 +828,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             }
             else if (aggregateLabelProvider != null)
             {
-                return aggregateLabelProvider.apply(row.model.getFilteredAggregate(filterItem));
+                return aggregateLabelProvider.apply(row, filterItem);
             }
             else
             {
@@ -1394,13 +1491,50 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         recordColumns.addColumn(column);
     }
 
+    private String formatPerformanceIndex(RowElement row, Function<PerformanceIndex, Double> extractor)
+    {
+        return formatPerformanceIndex(row, null, extractor);
+    }
+
+    private String formatPerformanceIndex(RowElement row, ClientFilterMenu.Item filterItem,
+                    Function<PerformanceIndex, Double> extractor)
+    {
+        if (row == null || row.isRecord())
+            return null;
+
+        try
+        {
+            PerformanceIndex index = filterItem == null ? row.getPerformanceIndex() : row.getPerformanceIndex(filterItem);
+            return formatPerformanceValue(index, extractor);
+        }
+        catch (IllegalArgumentException e)
+        {
+            return null;
+        }
+    }
+
+    private String formatPerformanceValue(PerformanceIndex index, Function<PerformanceIndex, Double> extractor)
+    {
+        if (index == null)
+            return null;
+
+        double value = extractor.apply(index);
+
+        if (Double.isFinite(value))
+            return Values.Percent2.format(value);
+
+        return null;
+    }
+
     private void addPerformanceColumns()
     {
         Column column = new Column("twror", Messages.ColumnTTWROR, SWT.RIGHT, 80); //$NON-NLS-1$
         column.setGroupLabel(Messages.GroupLabelPerformance);
         column.setMenuLabel(Messages.LabelTTWROR);
-        column.setLabelProvider(new RowElementLabelProvider(new NumberColorLabelProvider<>(Values.Percent2,
-                        r -> ((LazySecurityPerformanceRecord) r).getTrueTimeWeightedRateOfReturn().get())));
+        column.setLabelProvider(new RowElementLabelProvider(
+                        new NumberColorLabelProvider<>(Values.Percent2,
+                                        r -> ((LazySecurityPerformanceRecord) r).getTrueTimeWeightedRateOfReturn().get()),
+                        row -> formatPerformanceIndex(row, PerformanceIndex::getFinalAccumulatedPercentage)));
         column.setSorter(ColumnViewerSorter
                         .create(e -> ((LazySecurityPerformanceRecord) e).getTrueTimeWeightedRateOfReturn().get()));
         recordColumns.addColumn(column);
@@ -1419,8 +1553,10 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         column = new Column("izf", Messages.ColumnIRR, SWT.RIGHT, 80); //$NON-NLS-1$
         column.setGroupLabel(Messages.GroupLabelPerformance);
         column.setMenuLabel(Messages.ColumnIRR_MenuLabel);
-        column.setLabelProvider(new RowElementLabelProvider(new NumberColorLabelProvider<>(Values.Percent2,
-                        r -> ((LazySecurityPerformanceRecord) r).getIrr().get())));
+        column.setLabelProvider(new RowElementLabelProvider(
+                        new NumberColorLabelProvider<>(Values.Percent2,
+                                        r -> ((LazySecurityPerformanceRecord) r).getIrr().get()),
+                        row -> formatPerformanceIndex(row, PerformanceIndex::getPerformanceIRR)));
         column.setSorter(ColumnViewerSorter.create(e -> ((LazySecurityPerformanceRecord) e).getIrr().get()));
         recordColumns.addColumn(column);
 
@@ -1969,7 +2105,9 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
                         new ClientFilterMenu(getClient(), getPreferenceStore())));
         column.setGroupLabel(Messages.LabelClientFilterMenu);
         column.setLabelProvider(new RowElementOptionLabelProvider(
-                        r -> Values.Percent2.format(r.getTrueTimeWeightedRateOfReturn().get())));
+                        r -> Values.Percent2.format(r.getTrueTimeWeightedRateOfReturn().get()),
+                        (row, option) -> formatPerformanceIndex(row, option,
+                                        PerformanceIndex::getFinalAccumulatedPercentage)));
         column.setSorter(ColumnViewerSorter.createWithOption((element, option) -> {
             var dataRecord = model.getRecord(((LazySecurityPerformanceRecord) element).getSecurity(),
                             (ClientFilterMenu.Item) option);
@@ -1983,7 +2121,8 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         column.setOptions(new ClientFilterColumnOptions(Messages.ColumnIRR + suffix,
                         new ClientFilterMenu(getClient(), getPreferenceStore())));
         column.setGroupLabel(Messages.LabelClientFilterMenu);
-        column.setLabelProvider(new RowElementOptionLabelProvider(r -> Values.Percent2.format(r.getIrr().get())));
+        column.setLabelProvider(new RowElementOptionLabelProvider(r -> Values.Percent2.format(r.getIrr().get()),
+                        (row, option) -> formatPerformanceIndex(row, option, PerformanceIndex::getPerformanceIRR)));
         column.setSorter(ColumnViewerSorter.createWithOption((element, option) -> {
             var dataRecord = model.getRecord(((LazySecurityPerformanceRecord) element).getSecurity(),
                             (ClientFilterMenu.Item) option);
