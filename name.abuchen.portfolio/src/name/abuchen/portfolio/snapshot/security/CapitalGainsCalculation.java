@@ -162,7 +162,13 @@ import name.abuchen.portfolio.snapshot.trail.TrailRecord;
 
                 if (remainingShares > 0)
                 {
-                    fifo.add(new LineItem(remainingShares, t.getDateTime().toLocalDate(), remainingValue, txTrail,
+                    TrailRecord residualTrail = txTrail;
+                    if (remainingShares != bought)
+                    {
+                        residualTrail = txTrail.fraction(Money.of(termCurrency, remainingValue), remainingShares, bought);
+                    }
+
+                    fifo.add(new LineItem(remainingShares, t.getDateTime().toLocalDate(), remainingValue, residualTrail,
                                     transactionItem));
                 }
                 else if (lastShortMatch != null && remainingValue != 0)

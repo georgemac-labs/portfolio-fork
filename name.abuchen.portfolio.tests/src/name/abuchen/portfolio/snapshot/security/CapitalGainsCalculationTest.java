@@ -281,6 +281,32 @@ public class CapitalGainsCalculationTest
     }
 
     @Test
+    public void testShortCoverResidualTrailIsFractioned()
+    {
+        Client client = new Client();
+
+        Security security = new SecurityBuilder().addTo(client);
+
+        new PortfolioBuilder() //
+                        .sell(security, "2024-02-01", Values.Share.factorize(5), Values.Amount.factorize(500)) //
+                        .buy(security, "2024-02-05", Values.Share.factorize(8), Values.Amount.factorize(640)) //
+                        .sell(security, "2024-02-10", Values.Share.factorize(3), Values.Amount.factorize(270)) //
+                        .addTo(client);
+
+        var interval = Interval.of(LocalDate.parse("2024-01-01"), LocalDate.parse("2024-12-31"));
+        SecurityPerformanceSnapshot snapshot = SecurityPerformanceSnapshot.create(client, new TestCurrencyConverter(),
+                        interval);
+        SecurityPerformanceRecord record = snapshot.getRecord(security).orElseThrow(IllegalArgumentException::new);
+
+        Money expected = Money.of(CurrencyUnit.EUR, Values.Amount.factorize(130));
+        CapitalGainsRecord realized = record.getRealizedCapitalGains();
+        assertThat(realized.getCapitalGains(), is(expected));
+        assertThat(realized.getCapitalGainsTrail().getValue(), is(expected));
+        assertThat(realized.getForexCaptialGains(), is(Money.of(CurrencyUnit.EUR, 0)));
+        assertThat(realized.getForexCapitalGainsTrail().getValue(), is(Money.of(CurrencyUnit.EUR, 0)));
+    }
+
+    @Test
     public void testShortSaleWithForexRealizedAndUnrealizedGains()
     {
         Client client = new Client();
