@@ -15,9 +15,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.inject.Inject;
 
 import org.eclipse.e4.ui.services.IStylingEngine;
@@ -54,6 +56,7 @@ import org.eclipse.swt.widgets.Control;
 
 import name.abuchen.portfolio.model.Adaptable;
 import name.abuchen.portfolio.model.AttributeType;
+import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.CostMethod;
 import name.abuchen.portfolio.model.Security;
@@ -66,6 +69,7 @@ import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.MutableMoney;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.security.BaseSecurityPerformanceRecord;
+import name.abuchen.portfolio.snapshot.filter.ClientClassificationFilter;
 import name.abuchen.portfolio.snapshot.security.LazySecurityPerformanceRecord;
 import name.abuchen.portfolio.snapshot.security.LazySecurityPerformanceSnapshot;
 import name.abuchen.portfolio.snapshot.trail.Trail;
@@ -82,6 +86,7 @@ import name.abuchen.portfolio.ui.util.ClientFilterDropDown;
 import name.abuchen.portfolio.ui.util.ClientFilterMenu;
 import name.abuchen.portfolio.ui.util.ClientFilterMenu.Item;
 import name.abuchen.portfolio.ui.util.DropDown;
+import name.abuchen.portfolio.ui.util.LabelOnly;
 import name.abuchen.portfolio.ui.util.ReportingPeriodDropDown;
 import name.abuchen.portfolio.ui.util.ReportingPeriodDropDown.ReportingPeriodListener;
 import name.abuchen.portfolio.ui.util.SimpleAction;
@@ -188,15 +193,26 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         private static final String TOP = SecuritiesPerformanceView.class.getSimpleName() + "@top"; //$NON-NLS-1$
         private static final String BOTTOM = SecuritiesPerformanceView.class.getSimpleName() + "@bottom"; //$NON-NLS-1$
 
+        private final Client filteredClient;
+        private final CurrencyConverter converter;
+        private final Interval period;
+        private final Taxonomy taxonomy;
+
         private final Map<String, AggregateRow> filter2aggregates = new HashMap<>();
         private final Map<String, AggregateRow> predicate2cache = new HashMap<>();
+        private final Map<String, AggregateRow> classification2aggregates = new HashMap<>();
 
         private boolean hideTotalsAtTheTop;
         private boolean hideTotalsAtTheBottom;
 
-        public Model(LazySecurityPerformanceSnapshot snapshot)
+        public Model(Client filteredClient, CurrencyConverter converter, Interval period, Taxonomy taxonomy)
         {
-            super(snapshot.getRecords());
+            super(LazySecurityPerformanceSnapshot.create(filteredClient, converter, period).getRecords());
+
+            this.filteredClient = filteredClient;
+            this.converter = converter;
+            this.period = period;
+            this.taxonomy = taxonomy;
 
             this.hideTotalsAtTheTop = getPreferenceStore().getBoolean(TOP);
             this.hideTotalsAtTheBottom = getPreferenceStore().getBoolean(BOTTOM);
@@ -317,17 +333,140 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
 
         public List<RowElement> getRows()
         {
+            if (taxonomy == null)
+                return getRowsWithoutTaxonomy();
+            else
+                return getRowsWithTaxonomy();
+        }
+
+        private List<RowElement> getRowsWithoutTaxonomy()
+        {
             var rows = new ArrayList<RowElement>();
+            Supplier<AggregateRow> totals = this::getFilteredAggregate;
 
-            if (!model.hideTotalsAtTheTop)
-                rows.add(new RowElement(model, -1));
+            if (!hideTotalsAtTheTop)
+                rows.add(RowElement.forAggregate(this, -1, totals, null));
 
-            model.getRecords().stream().map(r -> new RowElement(model, r)).forEach(rows::add);
+            getRecords().stream().map(r -> RowElement.forRecord(this, r, 0, null)).forEach(rows::add);
 
-            if (!model.hideTotalsAtTheBottom)
-                rows.add(new RowElement(model, 1));
+            if (!hideTotalsAtTheBottom)
+                rows.add(RowElement.forAggregate(this, Integer.MAX_VALUE, totals, null));
 
             return rows;
+        }
+
+        private List<RowElement> getRowsWithTaxonomy()
+        {
+            var rows = new ArrayList<RowElement>();
+            Supplier<AggregateRow> totals = this::getFilteredAggregate;
+
+            if (!hideTotalsAtTheTop)
+                rows.add(RowElement.forAggregate(this, -1, totals, null));
+
+            int sortOrder = 1;
+            for (Classification classification : getOrderedClassifications())
+            {
+                var aggregate = getClassificationAggregate(classification);
+
+                List<LazySecurityPerformanceRecord> filtered = aggregate.getRecords().stream() //
+                                .filter(this::matchesFilter) //
+                                .collect(toMutableList());
+
+                if (filtered.isEmpty())
+                    continue;
+
+                AggregateRow filteredAggregate = new AggregateRow(filtered);
+                rows.add(RowElement.forAggregate(this, sortOrder, () -> filteredAggregate, classification));
+
+                int childSortOrder = sortOrder + 1;
+                for (LazySecurityPerformanceRecord record : filtered)
+                    rows.add(RowElement.forRecord(this, record, childSortOrder, classification));
+
+                sortOrder += 2;
+            }
+
+            if (!hideTotalsAtTheBottom)
+                rows.add(RowElement.forAggregate(this, Integer.MAX_VALUE, totals, null));
+
+            return rows;
+        }
+
+        private boolean matchesFilter(LazySecurityPerformanceRecord record)
+        {
+            for (Predicate<LazySecurityPerformanceRecord> predicate : recordFilter)
+            {
+                if (!predicate.test(record))
+                    return false;
+            }
+            return true;
+        }
+
+        private AggregateRow getClassificationAggregate(Classification classification)
+        {
+            return classification2aggregates.computeIfAbsent(classification.getId(), id -> {
+                Client classificationClient = new ClientClassificationFilter(classification).filter(filteredClient);
+                var snapshot = LazySecurityPerformanceSnapshot.create(classificationClient, converter, period);
+                return new AggregateRow(snapshot.getRecords());
+            });
+        }
+
+        private List<Classification> getOrderedClassifications()
+        {
+            if (taxonomy == null)
+                return List.of();
+
+            List<Classification> order = new ArrayList<>();
+            taxonomy.getRoot().getChildren().stream() //
+                            .sorted(Comparator.comparingInt(Classification::getRank)) //
+                            .forEach(order::add);
+
+            Classification unassigned = createUnassignedClassification();
+            if (unassigned != null)
+                order.add(unassigned);
+
+            return order;
+        }
+
+        private Classification createUnassignedClassification()
+        {
+            if (taxonomy == null)
+                return null;
+
+            Map<Security, Integer> assignedWeights = new HashMap<>();
+            taxonomy.getRoot().accept(new Taxonomy.Visitor()
+            {
+                @Override
+                public void visit(Classification classification, Classification.Assignment assignment)
+                {
+                    if (!(assignment.getInvestmentVehicle() instanceof Security security))
+                        return;
+
+                    if (getRecord(security) == null)
+                        return;
+
+                    assignedWeights.merge(security, assignment.getWeight(), Integer::sum);
+                }
+            });
+
+            Classification unassigned = new Classification(null,
+                            Classification.UNASSIGNED_ID + "@synthetic", //$NON-NLS-1$
+                            Messages.LabelWithoutClassification);
+            boolean hasAssignments = false;
+
+            for (LazySecurityPerformanceRecord record : getRecords())
+            {
+                Security security = record.getSecurity();
+                int assigned = assignedWeights.getOrDefault(security, 0);
+                int remaining = Classification.ONE_HUNDRED_PERCENT - assigned;
+                if (remaining > 0)
+                {
+                    Classification.Assignment assignment = new Classification.Assignment(security, remaining);
+                    unassigned.addAssignment(assignment);
+                    hasAssignments = true;
+                }
+            }
+
+            return hasAssignments ? unassigned : null;
         }
     }
 
@@ -345,19 +484,29 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
 
         private final Model model;
         private final LazySecurityPerformanceRecord performanceRecord;
+        private final Supplier<AggregateRow> aggregateSupplier;
+        private final Classification classification;
 
-        public RowElement(Model model, LazySecurityPerformanceRecord performanceRecord)
-        {
-            this.sortOrder = 0;
-            this.performanceRecord = performanceRecord;
-            this.model = model;
-        }
-
-        public RowElement(Model model, int sortOrder)
+        private RowElement(Model model, LazySecurityPerformanceRecord performanceRecord, int sortOrder,
+                        Supplier<AggregateRow> aggregateSupplier, Classification classification)
         {
             this.sortOrder = sortOrder;
-            this.performanceRecord = null;
+            this.performanceRecord = performanceRecord;
             this.model = model;
+            this.aggregateSupplier = aggregateSupplier;
+            this.classification = classification;
+        }
+
+        public static RowElement forRecord(Model model, LazySecurityPerformanceRecord performanceRecord, int sortOrder,
+                        Classification classification)
+        {
+            return new RowElement(model, performanceRecord, sortOrder, null, classification);
+        }
+
+        public static RowElement forAggregate(Model model, int sortOrder, Supplier<AggregateRow> aggregateSupplier,
+                        Classification classification)
+        {
+            return new RowElement(model, null, sortOrder, aggregateSupplier, classification);
         }
 
         public int getSortOrder()
@@ -370,6 +519,21 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             return performanceRecord != null;
         }
 
+        public boolean isCategory()
+        {
+            return performanceRecord == null && aggregateSupplier != null && classification != null;
+        }
+
+        public Classification getClassification()
+        {
+            return classification;
+        }
+
+        public AggregateRow getAggregate()
+        {
+            return aggregateSupplier != null ? aggregateSupplier.get() : null;
+        }
+
         @Override
         public <T> T adapt(Class<T> type) // NOSONAR
         {
@@ -377,6 +541,8 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
                 return type.cast(performanceRecord);
             else if (performanceRecord != null)
                 return performanceRecord.adapt(type);
+            else if (classification != null && type.isAssignableFrom(Classification.class))
+                return type.cast(classification);
             else
                 return null;
         }
@@ -502,7 +668,10 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             if (row.performanceRecord != null)
                 return recordLabelProvider.getText(row.performanceRecord);
             else if (aggregateLabelProvider != null)
-                return aggregateLabelProvider.apply(row.model.getFilteredAggregate());
+            {
+                AggregateRow aggregate = row.getAggregate();
+                return aggregate != null ? aggregateLabelProvider.apply(aggregate) : null;
+            }
             else
                 return null;
         }
@@ -667,6 +836,35 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
 
     private Model model;
 
+    private static final String PREF_TAXONOMY = SecuritiesPerformanceView.class.getSimpleName() + "-taxonomy"; //$NON-NLS-1$
+    private static final String PREF_TAXONOMY_NONE = "@none"; //$NON-NLS-1$
+
+    private Taxonomy taxonomy;
+
+    @PostConstruct
+    private void loadTaxonomy(IPreferenceStore preferences)
+    {
+        String taxonomyId = preferences.getString(PREF_TAXONOMY);
+
+        if (PREF_TAXONOMY_NONE.equals(taxonomyId))
+            return;
+
+        if (taxonomyId != null)
+        {
+            for (Taxonomy t : getClient().getTaxonomies())
+            {
+                if (taxonomyId.equals(t.getId()))
+                {
+                    this.taxonomy = t;
+                    break;
+                }
+            }
+        }
+
+        if (this.taxonomy == null && !getClient().getTaxonomies().isEmpty())
+            this.taxonomy = getClient().getTaxonomies().get(0);
+    }
+
     @Override
     protected String getDefaultTitle()
     {
@@ -688,6 +886,29 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         addExportButton(toolBar);
 
         toolBar.add(new DropDown(Messages.MenuShowHideColumns, Images.CONFIG, SWT.NONE, manager -> {
+            manager.add(new LabelOnly(Messages.LabelTaxonomies));
+
+            var noneAction = new SimpleAction(Messages.LabelUseNoTaxonomy, a -> {
+                taxonomy = null;
+                getPreferenceStore().setValue(PREF_TAXONOMY, PREF_TAXONOMY_NONE);
+                reportingPeriodUpdated();
+            });
+            noneAction.setChecked(taxonomy == null);
+            manager.add(noneAction);
+
+            for (Taxonomy t : getClient().getTaxonomies())
+            {
+                Action action = new SimpleAction(TextUtil.tooltip(t.getName()), a -> {
+                    taxonomy = t;
+                    getPreferenceStore().setValue(PREF_TAXONOMY, t.getId());
+                    reportingPeriodUpdated();
+                });
+                action.setChecked(t.equals(taxonomy));
+                manager.add(action);
+            }
+
+            manager.add(new Separator());
+
             recordColumns.menuAboutToShow(manager);
 
             manager.add(new Separator());
@@ -850,7 +1071,17 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
 
         // security name
         column = new NameColumn(getClient());
-        column.setLabelProvider(new RowElementLabelProvider(column, aggregate -> Messages.ColumnSum));
+        column.setLabelProvider(new RowElementLabelProvider(column, aggregate -> Messages.ColumnSum)
+        {
+            @Override
+            public String getText(Object element)
+            {
+                RowElement row = (RowElement) element;
+                if (row.isCategory() && row.getClassification() != null)
+                    return row.getClassification().getName();
+                return super.getText(element);
+            }
+        });
         column.getEditingSupport().addListener(new TouchClientListener(getClient()));
         column.setSortDirction(SWT.UP);
         recordColumns.addColumn(column);
@@ -1855,7 +2086,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         Interval period = dropDown.getSelectedPeriod().toInterval(LocalDate.now());
         CurrencyConverter converter = new CurrencyConverterImpl(factory, getClient().getBaseCurrency());
 
-        model = new Model(LazySecurityPerformanceSnapshot.create(filteredClient, converter, period));
+        model = new Model(filteredClient, converter, period, taxonomy);
 
         records.setInput(model.getRows());
         records.refresh();
