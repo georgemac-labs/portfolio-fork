@@ -17,12 +17,14 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 import jakarta.inject.Inject;
 
 import org.eclipse.e4.ui.services.IStylingEngine;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.ActionContributionItem;
+import org.eclipse.jface.action.ControlContribution;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IMenuListener;
 import org.eclipse.jface.action.IMenuManager;
@@ -51,6 +53,7 @@ import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Text;
 
 import name.abuchen.portfolio.model.Adaptable;
 import name.abuchen.portfolio.model.AttributeType;
@@ -593,8 +596,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             if (preferenceStore.getBoolean(SecuritiesPerformanceView.class.getSimpleName() + "-sharesEqualZero")) //$NON-NLS-1$
                 recordFilter.add(sharesEqualZero);
 
-            if (!recordFilter.isEmpty())
-                setImage(Images.FILTER_ON);
+            updateFilterImage();
 
             setMenuListener(this);
 
@@ -636,7 +638,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
                             recordFilter.remove(sharesNotZero);
                     }
 
-                    setImage(recordFilter.isEmpty() ? Images.FILTER_OFF : Images.FILTER_ON);
+                    updateFilterImage();
 
                     model.invalidatePredicateCache();
                     records.refresh();
@@ -644,6 +646,12 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             };
             action.setChecked(recordFilter.contains(predicate));
             return action;
+        }
+
+        private void updateFilterImage()
+        {
+            boolean isShareFilterActive = recordFilter.contains(sharesNotZero) || recordFilter.contains(sharesEqualZero);
+            setImage(isShareFilterActive ? Images.FILTER_ON : Images.FILTER_OFF);
         }
     }
 
@@ -663,8 +671,10 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
     private Font boldFont;
 
     private ClientFilterDropDown clientFilter;
+    private final Predicate<LazySecurityPerformanceRecord> searchPredicate = this::matchesSearchPattern;
     private List<Predicate<LazySecurityPerformanceRecord>> recordFilter = new ArrayList<>();
 
+    private Pattern searchPattern;
     private Model model;
 
     @Override
@@ -685,6 +695,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
                         SecuritiesPerformanceView.class.getSimpleName(), filter -> notifyModelUpdated());
         toolBar.add(clientFilter);
 
+        addSearchButton(toolBar);
         addExportButton(toolBar);
 
         toolBar.add(new DropDown(Messages.MenuShowHideColumns, Images.CONFIG, SWT.NONE, manager -> {
@@ -713,6 +724,41 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
 
     }
 
+    private void addSearchButton(ToolBarManager toolBar)
+    {
+        toolBar.add(new ControlContribution("searchbox") //$NON-NLS-1$
+        {
+            @Override
+            protected Control createControl(Composite parent)
+            {
+                final Text search = new Text(parent, SWT.SEARCH | SWT.ICON_CANCEL);
+                search.setMessage(Messages.LabelSearch);
+
+                search.addModifyListener(e -> {
+                    String filterText = search.getText().trim();
+                    if (filterText.isEmpty())
+                    {
+                        updateSearchFilter(null);
+                    }
+                    else
+                    {
+                        Pattern pattern = Pattern.compile(".*" + Pattern.quote(filterText) + ".*", //$NON-NLS-1$ //$NON-NLS-2$
+                                        Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+                        updateSearchFilter(pattern);
+                    }
+                });
+
+                return search;
+            }
+
+            @Override
+            protected int computeWidth(Control control)
+            {
+                return control.computeSize(150, SWT.DEFAULT, true).x;
+            }
+        });
+    }
+
     private void addExportButton(ToolBarManager manager)
     {
         Action export = new Action()
@@ -727,6 +773,44 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         export.setToolTipText(Messages.MenuExportData);
 
         manager.add(new ActionContributionItem(export));
+    }
+
+    private void updateSearchFilter(Pattern pattern)
+    {
+        searchPattern = pattern;
+
+        boolean containsSearchPredicate = recordFilter.contains(searchPredicate);
+        if (pattern != null)
+        {
+            if (!containsSearchPredicate)
+                recordFilter.add(searchPredicate);
+        }
+        else if (containsSearchPredicate)
+        {
+            recordFilter.remove(searchPredicate);
+        }
+
+        if (model != null)
+            model.invalidatePredicateCache();
+
+        if (records != null && !records.getControl().isDisposed())
+            records.refresh();
+    }
+
+    private boolean matchesSearchPattern(LazySecurityPerformanceRecord record)
+    {
+        if (searchPattern == null)
+            return true;
+
+        Security security = record.getSecurity();
+        return matchesSearchValue(security.getName()) || matchesSearchValue(security.getIsin())
+                        || matchesSearchValue(security.getTickerSymbol()) || matchesSearchValue(security.getWkn())
+                        || matchesSearchValue(security.getNote());
+    }
+
+    private boolean matchesSearchValue(String value)
+    {
+        return value != null && searchPattern.matcher(value).matches();
     }
 
     @Override
