@@ -690,12 +690,14 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         dropDown = new ReportingPeriodDropDown(getPart(), this);
         toolBar.add(dropDown);
 
+        addSearchButton(toolBar);
+
+        toolBar.add(new Separator());
+
         toolBar.add(new FilterDropDown(getPreferenceStore()));
         this.clientFilter = new ClientFilterDropDown(getClient(), getPreferenceStore(),
                         SecuritiesPerformanceView.class.getSimpleName(), filter -> notifyModelUpdated());
         toolBar.add(clientFilter);
-
-        addSearchButton(toolBar);
         addExportButton(toolBar);
 
         toolBar.add(new DropDown(Messages.MenuShowHideColumns, Images.CONFIG, SWT.NONE, manager -> {
