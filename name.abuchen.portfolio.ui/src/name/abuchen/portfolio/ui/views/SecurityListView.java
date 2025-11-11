@@ -418,8 +418,8 @@ public class SecurityListView extends AbstractFinanceView
 
         toolBar.add(new Separator());
 
-        toolBar.add(new CreateSecurityDropDown());
         toolBar.add(new FilterDropDown(getPreferenceStore()));
+        toolBar.add(new CreateSecurityDropDown());
         addExportButton(toolBar);
 
         toolBar.add(new DropDown(Messages.MenuShowHideColumns, Images.CONFIG, SWT.NONE,
