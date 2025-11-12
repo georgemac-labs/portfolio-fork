@@ -596,8 +596,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             if (preferenceStore.getBoolean(SecuritiesPerformanceView.class.getSimpleName() + "-sharesEqualZero")) //$NON-NLS-1$
                 recordFilter.add(sharesEqualZero);
 
-            if (!recordFilter.isEmpty())
-                setImage(Images.FILTER_ON);
+            updateFilterImage();
 
             setMenuListener(this);
 
@@ -639,7 +638,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
                             recordFilter.remove(sharesNotZero);
                     }
 
-                    setImage(recordFilter.isEmpty() ? Images.FILTER_OFF : Images.FILTER_ON);
+                    updateFilterImage();
 
                     model.invalidatePredicateCache();
                     records.refresh();
@@ -647,6 +646,12 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             };
             action.setChecked(recordFilter.contains(predicate));
             return action;
+        }
+
+        private void updateFilterImage()
+        {
+            boolean isShareFilterActive = recordFilter.contains(sharesNotZero) || recordFilter.contains(sharesEqualZero);
+            setImage(isShareFilterActive ? Images.FILTER_ON : Images.FILTER_OFF);
         }
     }
 
@@ -692,6 +697,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
                         SecuritiesPerformanceView.class.getSimpleName(), filter -> notifyModelUpdated());
         toolBar.add(clientFilter);
 
+        addSearchButton(toolBar);
         addExportButton(toolBar);
 
         toolBar.add(new DropDown(Messages.MenuShowHideColumns, Images.CONFIG, SWT.NONE, manager -> {
