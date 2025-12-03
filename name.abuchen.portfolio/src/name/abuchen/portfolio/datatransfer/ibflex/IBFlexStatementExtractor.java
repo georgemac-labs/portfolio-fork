@@ -999,6 +999,7 @@ public class IBFlexStatementExtractor implements Extractor
             }
 
             Security matchingSecurity = null;
+            Security matchingTickerSecurity = null;
 
             for (Security security : allSecurities)
             {
@@ -1012,12 +1013,27 @@ public class IBFlexStatementExtractor implements Extractor
                     else
                         matchingSecurity = security;
 
+                // Only match by ticker symbol if CONID and ISIN don't conflict
                 if (computedTickerSymbol.isPresent() && computedTickerSymbol.get().equals(security.getTickerSymbol()))
-                    return security;
+                {
+                    // Don't match by ticker if CONID or ISIN conflict
+                    boolean conidConflicts = conid != null && conid.length() > 0 
+                                    && security.getWkn() != null && security.getWkn().length() > 0
+                                    && !conid.equals(security.getWkn());
+                    boolean isinConflicts = !isin.isEmpty() 
+                                    && security.getIsin() != null && security.getIsin().length() > 0
+                                    && !isin.equals(security.getIsin());
+                    
+                    if (!conidConflicts && !isinConflicts)
+                        matchingTickerSecurity = security;
+                }
             }
 
             if (matchingSecurity != null)
                 return matchingSecurity;
+                
+            if (matchingTickerSecurity != null)
+                return matchingTickerSecurity;
 
             if (!doCreate)
                 return null;
