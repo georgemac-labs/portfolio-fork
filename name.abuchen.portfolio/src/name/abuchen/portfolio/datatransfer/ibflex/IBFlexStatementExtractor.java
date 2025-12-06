@@ -485,6 +485,15 @@ public class IBFlexStatementExtractor implements Extractor
                             ASSETKEY_WARRANTS).contains(element.getAttribute("assetCategory")))
                 return;
 
+            // An option expiration (both OTM and ITM) is represented as a BookTrade closing transaction
+            // with zero net cash value. OTM options are marked as "Ep" (Expired) in the notes,
+            // while ITM options are marked as "A" (Assignment) when they expire in the money.
+            boolean isOptionExpiration = "BookTrade".equals(element.getAttribute("transactionType"))
+                            && "C".equals(element.getAttribute("openCloseIndicator"))
+                            && Arrays.asList("Ep", "A").contains(element.getAttribute("notes"))
+                            && Arrays.asList(ASSETKEY_OPTION, ASSETKEY_FUTURE_OPTION)
+                                            .contains(element.getAttribute("assetCategory"));
+
             // Check if the level of detail is supported
             String lod = element.getAttribute("levelOfDetail");
             if (lod.contains("ASSET_SUMMARY")
@@ -563,7 +572,9 @@ public class IBFlexStatementExtractor implements Extractor
 
             BuySellEntryItem item = new BuySellEntryItem(portfolioTransaction);
 
-            if (portfolioTransaction.getPortfolioTransaction().getCurrencyCode() != null && portfolioTransaction.getPortfolioTransaction().getAmount() == 0)
+            if (portfolioTransaction.getPortfolioTransaction().getCurrencyCode() != null
+                            && portfolioTransaction.getPortfolioTransaction().getAmount() == 0
+                            && !isOptionExpiration)
             {
                 item.setFailureMessage(Messages.MsgErrorTransactionTypeNotSupported);
             }

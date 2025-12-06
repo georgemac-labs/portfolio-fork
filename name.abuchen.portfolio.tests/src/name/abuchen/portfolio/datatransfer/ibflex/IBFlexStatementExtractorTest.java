@@ -3367,4 +3367,57 @@ public class IBFlexStatementExtractorTest
                         hasAmount("GBP", 4.47), hasForexGrossValue("EUR", 5.39), //
                         hasTaxes("GBP", 0.00), hasFees("GBP", 0.00))));
     }
+
+    @Test
+    public void testIBFlexStatement26() throws IOException
+    {
+        // Test option expiration handling: both OTM (worthless) and ITM (assigned) expirations
+        // These are represented as zero-value BookTrade transactions that close the option position
+        var extractor = new IBFlexStatementExtractor(new Client());
+
+        var activityStatement = getClass().getResourceAsStream("testIBFlexStatementFile26.xml");
+        var tempFile = createTempFile(activityStatement);
+
+        var errors = new ArrayList<Exception>();
+
+        var results = extractor.extract(Collections.singletonList(tempFile), errors);
+
+        assertThat(errors, empty());
+        assertThat(countSecurities(results), is(2L));
+        assertThat(countBuySell(results), is(2L));
+        assertThat(countAccountTransactions(results), is(0L));
+
+        // check 1st buy sell transaction (OTM option expiration - notes="Ep")
+        BuySellEntryItem item = results.stream() //
+                        .filter(BuySellEntryItem.class::isInstance) //
+                        .map(BuySellEntryItem.class::cast) //
+                        .findFirst() //
+                        .orElseThrow();
+
+        assertThat(item.getFailureMessage(), is(nullValue()));
+
+        var buySellEntry = (BuySellEntry) item.getSubject();
+        var transaction = buySellEntry.getPortfolioTransaction();
+        assertThat(transaction.getType(), is(PortfolioTransaction.Type.BUY));
+        assertThat(transaction.getCurrencyCode(), is("USD"));
+        assertThat(transaction.getShares(), is(Values.Share.factorize(100)));
+        assertThat(transaction.getMonetaryAmount(), is(Money.of("USD", 0)));
+
+        // check 2nd buy sell transaction (ITM option expiration - notes="A")
+        item = results.stream() //
+                        .filter(BuySellEntryItem.class::isInstance) //
+                        .map(BuySellEntryItem.class::cast) //
+                        .skip(1) //
+                        .findFirst() //
+                        .orElseThrow();
+
+        assertThat(item.getFailureMessage(), is(nullValue()));
+
+        buySellEntry = (BuySellEntry) item.getSubject();
+        transaction = buySellEntry.getPortfolioTransaction();
+        assertThat(transaction.getType(), is(PortfolioTransaction.Type.BUY));
+        assertThat(transaction.getCurrencyCode(), is("USD"));
+        assertThat(transaction.getShares(), is(Values.Share.factorize(100)));
+        assertThat(transaction.getMonetaryAmount(), is(Money.of("USD", 0)));
+    }
 }
