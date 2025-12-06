@@ -3367,4 +3367,37 @@ public class IBFlexStatementExtractorTest
                         hasAmount("GBP", 4.47), hasForexGrossValue("EUR", 5.39), //
                         hasTaxes("GBP", 0.00), hasFees("GBP", 0.00))));
     }
+
+    @Test
+    public void testIBFlexStatement26() throws IOException
+    {
+        var extractor = new IBFlexStatementExtractor(new Client());
+
+        var activityStatement = getClass().getResourceAsStream("testIBFlexStatementFile26.xml");
+        var tempFile = createTempFile(activityStatement);
+
+        var errors = new ArrayList<Exception>();
+
+        var results = extractor.extract(Collections.singletonList(tempFile), errors);
+
+        assertThat(errors, empty());
+        assertThat(countSecurities(results), is(1L));
+        assertThat(countBuySell(results), is(1L));
+        assertThat(countAccountTransactions(results), is(0L));
+
+        BuySellEntryItem item = results.stream() //
+                        .filter(BuySellEntryItem.class::isInstance) //
+                        .map(BuySellEntryItem.class::cast) //
+                        .findFirst() //
+                        .orElseThrow();
+
+        assertThat(item.getFailureMessage(), is(nullValue()));
+
+        var buySellEntry = (BuySellEntry) item.getSubject();
+        var transaction = buySellEntry.getPortfolioTransaction();
+        assertThat(transaction.getType(), is(PortfolioTransaction.Type.BUY));
+        assertThat(transaction.getCurrencyCode(), is("USD"));
+        assertThat(transaction.getShares(), is(Values.Share.factorize(100)));
+        assertThat(transaction.getMonetaryAmount(), is(Money.of("USD", 0)));
+    }
 }

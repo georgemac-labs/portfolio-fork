@@ -485,6 +485,14 @@ public class IBFlexStatementExtractor implements Extractor
                             ASSETKEY_WARRANTS).contains(element.getAttribute("assetCategory")))
                 return;
 
+            // A worthless option expiration is represented as a BookTrade and typically marked
+            // as "Ep" (Expired) in the notes
+            boolean isWorthlessOptionExpiration = "BookTrade".equals(element.getAttribute("transactionType"))
+                            && "C".equals(element.getAttribute("openCloseIndicator"))
+                            && "Ep".equals(element.getAttribute("notes"))
+                            && Arrays.asList(ASSETKEY_OPTION, ASSETKEY_FUTURE_OPTION)
+                                            .contains(element.getAttribute("assetCategory"));
+
             // Check if the level of detail is supported
             String lod = element.getAttribute("levelOfDetail");
             if (lod.contains("ASSET_SUMMARY")
@@ -563,7 +571,9 @@ public class IBFlexStatementExtractor implements Extractor
 
             BuySellEntryItem item = new BuySellEntryItem(portfolioTransaction);
 
-            if (portfolioTransaction.getPortfolioTransaction().getCurrencyCode() != null && portfolioTransaction.getPortfolioTransaction().getAmount() == 0)
+            if (portfolioTransaction.getPortfolioTransaction().getCurrencyCode() != null
+                            && portfolioTransaction.getPortfolioTransaction().getAmount() == 0
+                            && !isWorthlessOptionExpiration)
             {
                 item.setFailureMessage(Messages.MsgErrorTransactionTypeNotSupported);
             }
