@@ -7,6 +7,7 @@ import org.eclipse.jface.action.ToolBarManager;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Table;
 
 import name.abuchen.portfolio.model.Adaptor;
 import name.abuchen.portfolio.model.Client;
@@ -94,6 +95,13 @@ public class TradesPane implements InformationPanePage
         else
         {
             trades.setInput(null);
+        }
+
+        Table table = trades.getTableViewer().getTable();
+        if (!table.isDisposed())
+        {
+            table.redraw();
+            table.update();
         }
 
     }

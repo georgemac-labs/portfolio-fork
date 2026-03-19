@@ -192,6 +192,15 @@ public class InformationPane
         // currently not visible are not updated if data changes
         page.setInput(currentInput);
         pagebook.showPage(control);
+        control.getDisplay().asyncExec(() -> {
+            if (!control.isDisposed())
+            {
+                if (control instanceof Composite composite)
+                    composite.layout(true, true);
+                control.redraw();
+                control.update();
+            }
+        });
 
         // update toolbar with pane controls
         if (!toolBarPaneControls.getControl().isDisposed())
