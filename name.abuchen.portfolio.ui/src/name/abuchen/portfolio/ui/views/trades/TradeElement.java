@@ -23,29 +23,32 @@ public class TradeElement implements Adaptable
     private final TradeTotals totals;
     private final int sortOrder;
     private final double weight;
+    private final int depth;
 
     /**
      * Creates a category element
      */
-    public TradeElement(TradeCategory category, int sortOrder)
+    public TradeElement(TradeCategory category, int sortOrder, int depth)
     {
         this.category = category;
         this.trade = null;
         this.totals = null;
         this.sortOrder = sortOrder;
         this.weight = 1.0;
+        this.depth = depth;
     }
 
     /**
      * Creates a trade element
      */
-    public TradeElement(Trade trade, int sortOrder, double weight)
+    public TradeElement(Trade trade, int sortOrder, double weight, int depth)
     {
         this.category = null;
         this.trade = trade;
         this.totals = null;
         this.sortOrder = sortOrder;
         this.weight = weight;
+        this.depth = depth;
     }
 
     /**
@@ -58,6 +61,7 @@ public class TradeElement implements Adaptable
         this.totals = totals;
         this.sortOrder = sortOrder;
         this.weight = 1.0;
+        this.depth = 0;
     }
 
     public boolean isCategory()
@@ -103,6 +107,11 @@ public class TradeElement implements Adaptable
     public double getWeight()
     {
         return weight;
+    }
+
+    public int getDepth()
+    {
+        return depth;
     }
 
     /**

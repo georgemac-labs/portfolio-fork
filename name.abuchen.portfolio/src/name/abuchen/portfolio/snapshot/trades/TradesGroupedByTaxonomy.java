@@ -4,7 +4,6 @@ import java.time.LocalDate;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +54,8 @@ public class TradesGroupedByTaxonomy
         for (Trade trade : allTrades)
             tradeAssignedWeights.put(trade, 0);
 
-        // create category for each classification and assign trades
+        // create category for each classification and assign trades (direct
+        // assignments only)
         Map<Object, TradeCategory> keyToCategory = new HashMap<>();
 
         taxonomy.getRoot().accept(new Taxonomy.Visitor()
@@ -107,15 +107,80 @@ public class TradesGroupedByTaxonomy
             }
         });
 
-        categories.addAll(keyToCategory.values().stream().filter(c -> c.getTotalWeight() > 0)
-                        .collect(Collectors.toList()));
+        // Build the category list in depth-first order using getTreeElements().
+        // Always include intermediate nodes (even empty ones) so the hierarchy
+        // is visible.
+        List<Classification> depthFirstOrder = taxonomy.getRoot().getTreeElements();
 
-        // sort by classification rank, id, and currency to keep multi-currency
-        // clones deterministic
-        Collections.sort(categories,
-                        Comparator.comparingInt((TradeCategory c) -> c.getClassification().getRank())
-                                        .thenComparing(c -> c.getClassification().getId())
-                                        .thenComparing(TradeCategory::getCurrencyKey));
+        // index for canonical ordering
+        Map<Classification, Integer> orderIndex = new HashMap<>();
+        for (int i = 0; i < depthFirstOrder.size(); i++)
+            orderIndex.put(depthFirstOrder.get(i), i);
+
+        // Collect categories that have trades
+        Set<Classification> classificationsWithTrades = keyToCategory.values().stream()
+                        .filter(c -> c.getTotalWeight() > 0)
+                        .map(TradeCategory::getTaxonomyClassification)
+                        .collect(Collectors.toSet());
+
+        // Determine which classifications need to be shown: any classification
+        // that has trades directly or has a descendant with trades
+        Set<Classification> classificationsToShow = new java.util.LinkedHashSet<>();
+        for (Classification c : classificationsWithTrades)
+        {
+            // walk up the tree to include all ancestors
+            Classification current = c;
+            while (current != null && current.getParent() != null)
+            {
+                classificationsToShow.add(current);
+                current = current.getParent();
+            }
+        }
+
+        // Add categories in depth-first order, including empty intermediate
+        // nodes
+        for (Classification classification : depthFirstOrder)
+        {
+            if (!classificationsToShow.contains(classification))
+                continue;
+
+            if (multiCurrencyMode)
+            {
+                // In multi-currency mode, multiple categories per
+                // classification are possible
+                boolean addedAny = false;
+                for (String currency : distinctCurrencies)
+                {
+                    Object key = new AbstractMap.SimpleImmutableEntry<>(classification, currency);
+                    TradeCategory category = keyToCategory.get(key);
+                    if (category != null && category.getTotalWeight() > 0)
+                    {
+                        categories.add(category);
+                        addedAny = true;
+                    }
+                }
+                // Add empty intermediate node if it has no direct trades but
+                // has children
+                if (!addedAny && !classification.getChildren().isEmpty())
+                {
+                    categories.add(new TradeCategory(classification, converter));
+                }
+            }
+            else
+            {
+                TradeCategory category = keyToCategory.get(classification);
+                if (category != null && category.getTotalWeight() > 0)
+                {
+                    categories.add(category);
+                }
+                else if (!classification.getChildren().isEmpty()
+                                && classificationsToShow.contains(classification))
+                {
+                    // empty intermediate node
+                    categories.add(new TradeCategory(classification, converter));
+                }
+            }
+        }
 
         // handle unassigned trades
         createUnassignedCategory(tradeAssignedWeights, multiCurrencyMode);

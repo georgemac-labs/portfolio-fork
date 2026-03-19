@@ -429,6 +429,18 @@ public class Classification implements Named
         return path;
     }
 
+    public int getDepth()
+    {
+        int depth = 0;
+        Classification c = parent;
+        while (c != null && c.getParent() != null)
+        {
+            depth++;
+            c = c.getParent();
+        }
+        return depth;
+    }
+
     public List<Classification> getTreeElements()
     {
         List<Classification> answer = new ArrayList<>();

@@ -46,6 +46,7 @@ import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.TouchClientLi
 import name.abuchen.portfolio.ui.util.viewers.ColumnViewerSorter;
 import name.abuchen.portfolio.ui.util.viewers.CopyPasteSupport;
 import name.abuchen.portfolio.ui.util.viewers.DateTimeLabelProvider;
+import name.abuchen.portfolio.ui.util.viewers.IndentedOwnerDrawLabelProvider;
 import name.abuchen.portfolio.ui.util.viewers.MoneyColorLabelProvider;
 import name.abuchen.portfolio.ui.util.viewers.NumberColorLabelProvider;
 import name.abuchen.portfolio.ui.util.viewers.SharesLabelProvider;
@@ -269,7 +270,7 @@ public class TradesTableViewer
             // name)
             // and categories (showing classification name in bold)
             column = new NameColumn(view.getClient());
-            column.setLabelProvider(withBoldFont(new ColumnLabelProvider()
+            var nameDelegate = withBoldFont(new ColumnLabelProvider()
             {
                 @Override
                 public String getText(Object e)
@@ -298,7 +299,12 @@ public class TradesTableViewer
                                         view.getClient().getSettings());
                     return null;
                 }
-            }));
+            });
+            column.setLabelProvider(new IndentedOwnerDrawLabelProvider(nameDelegate, e -> {
+                if (e instanceof TradeElement te)
+                    return te.getDepth();
+                return 0;
+            }, e -> e instanceof TradeElement te && te.isCategory()));
             column.setSorter(ColumnViewerSorter.create(e -> {
                 Trade trade = asTrade(e);
                 if (trade != null)

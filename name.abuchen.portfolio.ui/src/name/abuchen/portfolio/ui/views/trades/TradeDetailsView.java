@@ -57,7 +57,7 @@ import name.abuchen.portfolio.ui.util.DropDown;
 import name.abuchen.portfolio.ui.util.LabelOnly;
 import name.abuchen.portfolio.ui.util.SimpleAction;
 import name.abuchen.portfolio.ui.util.TableViewerCSVExporter;
-import name.abuchen.portfolio.ui.util.action.MenuContribution;
+import name.abuchen.portfolio.ui.util.TaxonomySelector;
 import name.abuchen.portfolio.ui.views.SecurityContextMenu;
 import name.abuchen.portfolio.ui.views.TradesTableViewer;
 import name.abuchen.portfolio.ui.views.panes.HistoricalPricesPane;
@@ -284,7 +284,6 @@ public final class TradeDetailsView extends AbstractFinanceView
     private static final String PREF_HIDE_TOTALS_BOTTOM = TradeDetailsView.class.getSimpleName() + "@hideTotalsBottom"; //$NON-NLS-1$
 
     private static final String PREF_TAXONOMY = TradeDetailsView.class.getSimpleName() + "-taxonomy"; //$NON-NLS-1$
-    private static final String PREF_TAXONOMY_NONE = "@none"; //$NON-NLS-1$
 
     private static final String ID_WARNING_TOOL_ITEM = "warning"; //$NON-NLS-1$
 
@@ -295,7 +294,7 @@ public final class TradeDetailsView extends AbstractFinanceView
 
     private CurrencyConverter converter;
     private TradesTableViewer table;
-    private Taxonomy taxonomy;
+    private TaxonomySelector taxonomySelector;
     private Job currentUpdateJob;
 
     @Override
@@ -354,25 +353,7 @@ public final class TradeDetailsView extends AbstractFinanceView
     @PostConstruct
     private void loadTaxonomy() // NOSONAR
     {
-        String taxonomyId = getPreferenceStore().getString(PREF_TAXONOMY);
-
-        if (PREF_TAXONOMY_NONE.equals(taxonomyId))
-            return;
-
-        if (taxonomyId != null)
-        {
-            for (Taxonomy t : getClient().getTaxonomies())
-            {
-                if (taxonomyId.equals(t.getId()))
-                {
-                    this.taxonomy = t;
-                    break;
-                }
-            }
-        }
-
-        if (this.taxonomy == null && !getClient().getTaxonomies().isEmpty())
-            this.taxonomy = getClient().getTaxonomies().get(0);
+        taxonomySelector = new TaxonomySelector(getClient(), getPreferenceStore(), PREF_TAXONOMY, this::update);
     }
 
     @Override
@@ -408,26 +389,8 @@ public final class TradeDetailsView extends AbstractFinanceView
 
         toolBarManager.add(new DropDown(Messages.MenuShowHideColumns, Images.CONFIG, SWT.NONE, manager -> {
 
-            manager.add(new LabelOnly(Messages.LabelTaxonomies));
+            taxonomySelector.contributeToMenu(manager);
 
-            var noneAction = new SimpleAction(Messages.LabelUseNoTaxonomy, a -> {
-                taxonomy = null;
-                getPreferenceStore().setValue(PREF_TAXONOMY, PREF_TAXONOMY_NONE);
-                update();
-            });
-            noneAction.setChecked(taxonomy == null);
-            manager.add(noneAction);
-
-            for (final Taxonomy t : getClient().getTaxonomies())
-            {
-                manager.add(new MenuContribution(t.getName(), () -> {
-                    taxonomy = t;
-                    getPreferenceStore().setValue(PREF_TAXONOMY, t.getId());
-                    update();
-                }, t.equals(taxonomy)));
-            }
-
-            manager.add(new Separator());
             manager.add(new LabelOnly(Messages.LabelColumns));
 
             table.getShowHideColumnHelper().menuAboutToShow(manager);
@@ -618,7 +581,7 @@ public final class TradeDetailsView extends AbstractFinanceView
                 new SecurityContextMenu(this).menuAboutToShow(manager, trade.getSecurity(), trade.getPortfolio());
         }
 
-        if (taxonomy == null)
+        if (taxonomySelector.getTaxonomy() == null)
             return;
 
         if (!manager.isEmpty())
@@ -678,7 +641,9 @@ public final class TradeDetailsView extends AbstractFinanceView
 
         currentUpdateJob = new UpdateTradesJob(preselectedInput, this.useSecurityCurrency, this.converter,
                         this.onlyOpen.isTrue(), this.onlyClosed.isTrue(), this.onlyProfitable.isTrue(),
-                        this.onlyLossMaking.isTrue(), this.filterPattern, this.taxonomy, this.hideTotalsAtTheTop,
+                        this.onlyLossMaking.isTrue(), this.filterPattern,
+                        this.taxonomySelector != null ? this.taxonomySelector.getTaxonomy() : null,
+                        this.hideTotalsAtTheTop,
                         this.hideTotalsAtTheBottom);
         currentUpdateJob.setSystem(true);
         currentUpdateJob.schedule();
@@ -829,6 +794,11 @@ public final class TradeDetailsView extends AbstractFinanceView
         List<TradeElement> elements = new ArrayList<>();
         TradeTotals totals = new TradeTotals(groupedTrades);
 
+        // When totals are shown, shift all depths by 1 so top-level categories
+        // are visually nested under the Sum row
+        boolean hasTotals = !hideTotalsAtTheTop || !hideTotalsAtTheBottom;
+        int depthOffset = hasTotals ? 1 : 0;
+
         if (!hideTotalsAtTheTop)
             elements.add(new TradeElement(totals, 0));
 
@@ -836,19 +806,24 @@ public final class TradeDetailsView extends AbstractFinanceView
 
         for (TradeCategory category : groupedTrades.asList())
         {
-            // Do not show categories that have no matching trades
-            if (category.getTradeAssignments().isEmpty())
+            // Do not show categories that have no matching trades and no
+            // children (intermediate nodes are kept)
+            if (category.getTradeAssignments().isEmpty()
+                            && category.getClassification().getChildren().isEmpty())
                 continue;
 
+            int categoryDepth = category.getTaxonomyClassification().getDepth() + depthOffset;
+
             // Add category row with current sortOrder
-            elements.add(new TradeElement(category, sortOrder));
+            elements.add(new TradeElement(category, sortOrder, categoryDepth));
             sortOrder++;
 
             // Add all trades in this category with the SAME sortOrder
             // This keeps them grouped together during sorting
             for (TradeAssignment assignment : category.getTradeAssignments())
             {
-                elements.add(new TradeElement(assignment.getTrade(), sortOrder, assignment.getWeight()));
+                elements.add(new TradeElement(assignment.getTrade(), sortOrder, assignment.getWeight(),
+                                categoryDepth + 1));
             }
 
             // Increment sortOrder for next category

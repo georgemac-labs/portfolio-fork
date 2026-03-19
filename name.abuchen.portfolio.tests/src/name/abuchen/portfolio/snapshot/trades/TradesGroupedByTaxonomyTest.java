@@ -492,4 +492,121 @@ public class TradesGroupedByTaxonomyTest
                         .filter(c -> c.getTaxonomyClassification() == global) //
                         .toList();
     }
+
+    @Test
+    public void testHierarchicalGroupingWithThreeLevels() throws Exception
+    {
+        Client client = new Client();
+
+        Security secA = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-02-01", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Security secB = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-02-01", Values.Quote.factorize(106)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2020-01-01", Values.Amount.factorize(50000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(secA, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(secA, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .buy(secB, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(secB, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(10600)) //
+                        .addTo(client);
+
+        // 3-level taxonomy: equities -> growth -> tech
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("equities") //
+                        .addClassification("equities", "growth") //
+                        .addClassification("growth", "tech") //
+                        .addTo(client);
+
+        Classification equities = taxonomy.getClassificationById("equities");
+        Classification growth = taxonomy.getClassificationById("growth");
+        Classification tech = taxonomy.getClassificationById("tech");
+
+        // assign secA to "equities" (top level) and secB to "tech" (deepest)
+        equities.addAssignment(new Classification.Assignment(secA));
+        tech.addAssignment(new Classification.Assignment(secB));
+
+        List<Trade> trades = new java.util.ArrayList<>();
+        TradeCollector collector = new TradeCollector(client, new TestCurrencyConverter());
+        trades.addAll(collector.collect(secA));
+        trades.addAll(collector.collect(secB));
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, new TestCurrencyConverter());
+
+        // All three classifications should have categories
+        TradeCategory equitiesCategory = grouped.byClassification(equities);
+        assertThat(equitiesCategory, notNullValue());
+
+        TradeCategory growthCategory = grouped.byClassification(growth);
+        assertThat("empty intermediate node should exist", growthCategory, notNullValue());
+
+        TradeCategory techCategory = grouped.byClassification(tech);
+        assertThat(techCategory, notNullValue());
+
+        // Depth-first ordering should be: equities, growth, tech
+        List<TradeCategory> cats = grouped.asList();
+        int equitiesIdx = cats.indexOf(equitiesCategory);
+        int growthIdx = cats.indexOf(growthCategory);
+        int techIdx = cats.indexOf(techCategory);
+        assertThat("equities before growth", equitiesIdx < growthIdx, is(true));
+        assertThat("growth before tech", growthIdx < techIdx, is(true));
+
+        // Verify depths
+        assertThat(equities.getDepth(), is(0));
+        assertThat(growth.getDepth(), is(1));
+        assertThat(tech.getDepth(), is(2));
+    }
+
+    @Test
+    public void testEmptyIntermediateNodeAppearsWhenDescendantHasTrades() throws Exception
+    {
+        Client client = new Client();
+
+        Security secA = new SecurityBuilder() //
+                        .addPrice("2020-01-01", Values.Quote.factorize(100)) //
+                        .addPrice("2020-02-01", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2020-01-01", Values.Amount.factorize(50000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(secA, "2020-01-01", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(secA, "2020-02-01", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .addTo(client);
+
+        // parent -> child, security assigned only to child
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("parent") //
+                        .addClassification("parent", "child") //
+                        .addTo(client);
+
+        Classification parent = taxonomy.getClassificationById("parent");
+        Classification child = taxonomy.getClassificationById("child");
+
+        child.addAssignment(new Classification.Assignment(secA));
+
+        List<Trade> trades = new java.util.ArrayList<>();
+        trades.addAll(new TradeCollector(client, new TestCurrencyConverter()).collect(secA));
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, new TestCurrencyConverter());
+
+        // parent should appear as empty intermediate node
+        TradeCategory parentCategory = grouped.byClassification(parent);
+        assertThat("parent intermediate node should exist", parentCategory, notNullValue());
+        assertThat("parent should have no direct trades", parentCategory.getTradeAssignments().isEmpty(), is(true));
+
+        TradeCategory childCategory = grouped.byClassification(child);
+        assertThat(childCategory, notNullValue());
+        assertThat(childCategory.getTradeCount(), is(1L));
+    }
 }

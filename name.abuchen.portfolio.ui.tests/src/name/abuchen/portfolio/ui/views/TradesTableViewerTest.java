@@ -61,7 +61,7 @@ public class TradesTableViewerTest
         List<Trade> trades = collector.collect(security);
 
         Trade trade = trades.get(0);
-        TradeElement element = new TradeElement(trade, 0, 0.5);
+        TradeElement element = new TradeElement(trade, 0, 0.5, 0);
 
         double expected = trade.getReturn();
 
@@ -100,7 +100,7 @@ public class TradesTableViewerTest
         int partialWeight = Classification.ONE_HUNDRED_PERCENT / 3;
         double taxonomyWeight = partialWeight / (double) Classification.ONE_HUNDRED_PERCENT;
 
-        TradeElement element = new TradeElement(trade, 0, taxonomyWeight);
+        TradeElement element = new TradeElement(trade, 0, taxonomyWeight, 0);
 
         long expectedWeightedShares = BigDecimal.valueOf(trade.getShares()) //
                         .multiply(BigDecimal.valueOf(partialWeight), Values.MC) //
@@ -108,7 +108,7 @@ public class TradesTableViewerTest
                         .setScale(0, RoundingMode.HALF_DOWN).longValue();
 
         assertThat(element.getWeightedShares(), is(expectedWeightedShares));
-        assertThat(new TradeElement(trade, 0, 1.0).getWeightedShares(), is(trade.getShares()));
+        assertThat(new TradeElement(trade, 0, 1.0, 0).getWeightedShares(), is(trade.getShares()));
     }
 
     @Test
@@ -148,8 +148,8 @@ public class TradesTableViewerTest
         TradeCategory category = grouped.asList().stream().filter(c -> c.getTaxonomyClassification() == equities)
                         .findFirst().orElse(null);
 
-        TradeElement tradeElement = new TradeElement(trade, 1, 1.0);
-        TradeElement categoryElement = new TradeElement(category, 0);
+        TradeElement tradeElement = new TradeElement(trade, 1, 1.0, 1);
+        TradeElement categoryElement = new TradeElement(category, 0, 0);
 
         MoneyColorLabelProvider provider = new MoneyColorLabelProvider(element -> {
             if (element instanceof TradeElement te)
@@ -239,7 +239,7 @@ public class TradesTableViewerTest
         AtomicBoolean refreshCalled = new AtomicBoolean(false);
         column.getEditingSupport().addListener((element, newValue, oldValue) -> refreshCalled.set(true));
 
-        TradeElement element = new TradeElement(trade, 0, 1.0);
+        TradeElement element = new TradeElement(trade, 0, 1.0, 0);
 
         // Execute the edit
         column.getEditingSupport().setValue(element, "Renamed Security");
