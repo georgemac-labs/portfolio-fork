@@ -804,15 +804,29 @@ public final class TradeDetailsView extends AbstractFinanceView
 
         int sortOrder = 1;
 
-        for (TradeCategory category : groupedTrades.asList())
+        List<TradeCategory> categoryList = groupedTrades.asList();
+
+        for (int i = 0; i < categoryList.size(); i++)
         {
+            TradeCategory category = categoryList.get(i);
+
             // Do not show categories that have no matching trades and no
-            // children (intermediate nodes are kept)
+            // children (intermediate nodes are kept). Also keep
+            // intermediate parents that have currency sub-categories
+            // following them.
             if (category.getTradeAssignments().isEmpty()
-                            && category.getClassification().getChildren().isEmpty())
+                            && category.getClassification().getChildren().isEmpty()
+                            && !(i + 1 < categoryList.size() && categoryList.get(i + 1).isCurrencyCategory()
+                                            && categoryList.get(i + 1).getTaxonomyClassification() == category
+                                                            .getTaxonomyClassification()))
                 continue;
 
             int categoryDepth = category.getTaxonomyClassification().getDepth() + depthOffset;
+
+            // Currency sub-categories are nested one level deeper under
+            // their parent classification
+            if (category.isCurrencyCategory())
+                categoryDepth++;
 
             // Add category row with current sortOrder
             elements.add(new TradeElement(category, sortOrder, categoryDepth));

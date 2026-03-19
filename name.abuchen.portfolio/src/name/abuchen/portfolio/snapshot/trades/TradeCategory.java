@@ -174,7 +174,7 @@ public class TradeCategory
         this.taxonomyClassification = classification;
         this.classification = new Classification(classification.getParent(), //
                         classification.getId(), //
-                        classification.getName() + " (" + currencyCode + ")"); //$NON-NLS-1$ //$NON-NLS-2$
+                        currencyCode);
         this.classification.setRank(classification.getRank());
     }
 
@@ -186,6 +186,11 @@ public class TradeCategory
     public Classification getTaxonomyClassification()
     {
         return taxonomyClassification;
+    }
+
+    public boolean isCurrencyCategory()
+    {
+        return classification != taxonomyClassification;
     }
 
     public String getCurrencyKey()

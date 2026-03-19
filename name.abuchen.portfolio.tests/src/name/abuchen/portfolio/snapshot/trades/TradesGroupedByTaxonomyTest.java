@@ -349,14 +349,21 @@ public class TradesGroupedByTaxonomyTest
 
         TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
 
+        // 2 categories: intermediate parent (equities) + currency (USD)
+        assertThat(grouped.asList().size(), is(2));
+
         TradeCategory equitiesCategory = grouped.byClassification(equities);
         assertThat(equitiesCategory, notNullValue());
-        assertThat(equitiesCategory.getCurrencyKey(), is(CurrencyUnit.USD));
+
+        TradeCategory currencyCategory = grouped.asList().stream()
+                        .filter(TradeCategory::isCurrencyCategory)
+                        .findFirst().orElse(null);
+        assertThat(currencyCategory, notNullValue());
+        assertThat(currencyCategory.getCurrencyKey(), is(CurrencyUnit.USD));
 
         Trade usdTrade = trades.get(0);
         assertThat(usdTrade.getProfitLoss().getCurrencyCode(), is(CurrencyUnit.USD));
-        assertThat(equitiesCategory.getTotalProfitLoss(), is(usdTrade.getProfitLoss()));
-        assertThat(grouped.asList().size(), is(1));
+        assertThat(currencyCategory.getTotalProfitLoss(), is(usdTrade.getProfitLoss()));
     }
 
     @Test
@@ -440,8 +447,11 @@ public class TradesGroupedByTaxonomyTest
     private List<String> extractCurrencyOrder(boolean reverseTrades) throws Exception
     {
         List<TradeCategory> categories = buildMultiCurrencyCategories(reverseTrades);
-        assertThat(categories.size(), is(2));
-        return categories.stream().map(TradeCategory::getCurrencyKey).toList();
+        // 3 categories: intermediate parent + EUR + USD
+        assertThat(categories.size(), is(3));
+        return categories.stream()
+                        .filter(TradeCategory::isCurrencyCategory)
+                        .map(TradeCategory::getCurrencyKey).toList();
     }
 
     private List<TradeCategory> buildMultiCurrencyCategories(boolean reverseTrades) throws Exception
@@ -491,6 +501,73 @@ public class TradesGroupedByTaxonomyTest
         return grouped.asList().stream() //
                         .filter(c -> c.getTaxonomyClassification() == global) //
                         .toList();
+    }
+
+    @Test
+    public void testMultiCurrencyNestsCurrenciesUnderClassification() throws Exception
+    {
+        Client client = new Client();
+
+        Security eurSecurity = new SecurityBuilder(CurrencyUnit.EUR) //
+                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Security usdSecurity = new SecurityBuilder(CurrencyUnit.USD) //
+                        .addPrice("2015-01-02", Values.Quote.factorize(100)) //
+                        .addPrice("2015-01-09", Values.Quote.factorize(110)) //
+                        .addTo(client);
+
+        Account account = new AccountBuilder() //
+                        .deposit_("2015-01-01", Values.Amount.factorize(200000)) //
+                        .addTo(client);
+
+        new PortfolioBuilder(account) //
+                        .buy(eurSecurity, "2015-01-02", Values.Share.factorize(100), Values.Amount.factorize(10000)) //
+                        .sell(eurSecurity, "2015-01-09", Values.Share.factorize(100), Values.Amount.factorize(11000)) //
+                        .buy(usdSecurity, "2015-01-02", Values.Share.factorize(50), Values.Amount.factorize(8000)) //
+                        .sell(usdSecurity, "2015-01-09", Values.Share.factorize(50), Values.Amount.factorize(8500)) //
+                        .addTo(client);
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("equities") //
+                        .addTo(client);
+
+        Classification equities = taxonomy.getClassificationById("equities");
+        equities.addAssignment(new Classification.Assignment(eurSecurity));
+        equities.addAssignment(new Classification.Assignment(usdSecurity));
+
+        TestCurrencyConverter converter = new TestCurrencyConverter(CurrencyUnit.EUR);
+
+        List<Trade> trades = new java.util.ArrayList<>();
+        trades.addAll(new TradeCollector(client, converter.with(CurrencyUnit.EUR)).collect(eurSecurity));
+        trades.addAll(new TradeCollector(client, converter.with(CurrencyUnit.USD)).collect(usdSecurity));
+
+        TradesGroupedByTaxonomy grouped = new TradesGroupedByTaxonomy(taxonomy, trades, converter);
+
+        List<TradeCategory> cats = grouped.asList();
+
+        // 3 categories: intermediate parent + EUR currency + USD currency
+        assertThat(cats.size(), is(3));
+
+        // First is the intermediate parent (not a currency category)
+        TradeCategory parent = cats.get(0);
+        assertThat(parent.isCurrencyCategory(), is(false));
+        assertThat(parent.getTaxonomyClassification(), is(equities));
+        assertThat(parent.getTradeAssignments().isEmpty(), is(true));
+
+        // Then EUR and USD currency sub-categories
+        TradeCategory eurCategory = cats.get(1);
+        assertThat(eurCategory.isCurrencyCategory(), is(true));
+        assertThat(eurCategory.getCurrencyKey(), is(CurrencyUnit.EUR));
+        assertThat(eurCategory.getTaxonomyClassification(), is(equities));
+        assertThat(eurCategory.getTradeCount(), is(1L));
+
+        TradeCategory usdCategory = cats.get(2);
+        assertThat(usdCategory.isCurrencyCategory(), is(true));
+        assertThat(usdCategory.getCurrencyKey(), is(CurrencyUnit.USD));
+        assertThat(usdCategory.getTaxonomyClassification(), is(equities));
+        assertThat(usdCategory.getTradeCount(), is(1L));
     }
 
     @Test

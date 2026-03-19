@@ -139,6 +139,10 @@ public class TradesGroupedByTaxonomy
 
         // Add categories in depth-first order, including empty intermediate
         // nodes
+        // Sort distinct currencies alphabetically for stable ordering
+        List<String> sortedCurrencies = new ArrayList<>(distinctCurrencies);
+        Collections.sort(sortedCurrencies);
+
         for (Classification classification : depthFirstOrder)
         {
             if (!classificationsToShow.contains(classification))
@@ -146,23 +150,26 @@ public class TradesGroupedByTaxonomy
 
             if (multiCurrencyMode)
             {
-                // In multi-currency mode, multiple categories per
-                // classification are possible
-                boolean addedAny = false;
-                for (String currency : distinctCurrencies)
+                // Collect currency categories for this classification
+                List<TradeCategory> currencyCategories = new ArrayList<>();
+                for (String currency : sortedCurrencies)
                 {
                     Object key = new AbstractMap.SimpleImmutableEntry<>(classification, currency);
                     TradeCategory category = keyToCategory.get(key);
                     if (category != null && category.getTotalWeight() > 0)
-                    {
-                        categories.add(category);
-                        addedAny = true;
-                    }
+                        currencyCategories.add(category);
                 }
-                // Add empty intermediate node if it has no direct trades but
-                // has children
-                if (!addedAny && !classification.getChildren().isEmpty())
+
+                if (!currencyCategories.isEmpty())
                 {
+                    // Always emit the classification as an intermediate
+                    // parent node, then currency sub-categories underneath
+                    categories.add(new TradeCategory(classification, converter));
+                    categories.addAll(currencyCategories);
+                }
+                else if (!classification.getChildren().isEmpty())
+                {
+                    // Empty intermediate node with children
                     categories.add(new TradeCategory(classification, converter));
                 }
             }
