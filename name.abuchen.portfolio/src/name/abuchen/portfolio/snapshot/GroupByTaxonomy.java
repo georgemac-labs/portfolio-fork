@@ -4,9 +4,11 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import name.abuchen.portfolio.Messages;
@@ -84,52 +86,40 @@ public final class GroupByTaxonomy
     private void doGrouping(final Map<InvestmentVehicle, Item> vehicle2position)
     {
         if (taxonomy != null)
-        {
             createCategoriesAndAllocate(vehicle2position);
-
-            Collections.sort(categories, (r, l) -> Integer.compare(r.getClassification().getRank(),
-                            l.getClassification().getRank()));
-        }
 
         allocateLeftOvers(vehicle2position);
     }
 
     private void createCategoriesAndAllocate(final Map<InvestmentVehicle, Item> vehicle2position)
     {
-        for (Classification classification : taxonomy.getRoot().getChildren())
+        List<Classification> depthFirstOrder = taxonomy.getRoot().getTreeElements();
+
+        Map<Classification, AssetCategory> classification2category = new HashMap<>();
+
+        // first pass: create categories for classifications with direct
+        // assignments
+        for (Classification classification : depthFirstOrder)
         {
-            final Map<InvestmentVehicle, Item> vehicle2item = new HashMap<>();
+            Map<InvestmentVehicle, Item> vehicle2item = new HashMap<>();
 
-            // first: assign items to categories
-
-            // item.weight records the weight
-            // (a) already assigned to any category (in vechile2position)
-            // (b) assigned to this category (in vehicle2item)
-
-            classification.accept(new Taxonomy.Visitor()
+            for (Assignment assignment : classification.getAssignments())
             {
-                @Override
-                public void visit(Classification classification, Assignment assignment)
+                Item item = vehicle2position.get(assignment.getInvestmentVehicle());
+                if (item != null)
                 {
-                    Item item = vehicle2position.get(assignment.getInvestmentVehicle());
-                    if (item != null)
-                    {
-                        // record (a)
-                        item.weight += assignment.getWeight();
+                    // record global weight
+                    item.weight += assignment.getWeight();
 
-                        // add to map of this classification + record (b)
-                        vehicle2item.computeIfAbsent(assignment.getInvestmentVehicle(),
-                                        v -> new Item(item.position)).weight += assignment.getWeight();
-                    }
+                    // add to local map for this classification
+                    vehicle2item.computeIfAbsent(assignment.getInvestmentVehicle(),
+                                    v -> new Item(item.position)).weight += assignment.getWeight();
                 }
-            });
-
-            // second: create asset category and positions
+            }
 
             if (!vehicle2item.isEmpty())
             {
                 AssetCategory category = new AssetCategory(classification, converter, date, valuation);
-                categories.add(category);
 
                 for (Entry<InvestmentVehicle, Item> entry : vehicle2item.entrySet())
                 {
@@ -141,9 +131,33 @@ public final class GroupByTaxonomy
                     category.addPosition(new AssetPosition(position, converter, date, getValuation()));
                 }
 
-                // sort positions by name
                 Collections.sort(category.getPositions(), new AssetPosition.ByDescription());
+                classification2category.put(classification, category);
             }
+        }
+
+        // second pass: create empty intermediate categories for ancestors
+        Set<Classification> neededAncestors = new HashSet<>();
+        for (Classification classification : classification2category.keySet())
+        {
+            Classification c = classification.getParent();
+            while (c != null && c.getParent() != null)
+            {
+                if (!classification2category.containsKey(c))
+                    neededAncestors.add(c);
+                c = c.getParent();
+            }
+        }
+
+        for (Classification ancestor : neededAncestors)
+            classification2category.put(ancestor, new AssetCategory(ancestor, converter, date, valuation));
+
+        // build final list in depth-first order
+        for (Classification classification : depthFirstOrder)
+        {
+            AssetCategory category = classification2category.get(classification);
+            if (category != null)
+                categories.add(category);
         }
     }
 

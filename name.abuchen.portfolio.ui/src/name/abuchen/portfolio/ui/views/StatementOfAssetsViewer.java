@@ -92,8 +92,8 @@ import name.abuchen.portfolio.ui.util.AttributeComparator;
 import name.abuchen.portfolio.ui.util.CacheKey;
 import name.abuchen.portfolio.ui.util.LabelOnly;
 import name.abuchen.portfolio.ui.util.SimpleAction;
+import name.abuchen.portfolio.ui.util.TaxonomySelector;
 import name.abuchen.portfolio.ui.util.ValueColorScheme;
-import name.abuchen.portfolio.ui.util.action.MenuContribution;
 import name.abuchen.portfolio.ui.util.viewers.Column;
 import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport;
 import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.MarkDirtyClientListener;
@@ -101,6 +101,7 @@ import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.TouchClientLi
 import name.abuchen.portfolio.ui.util.viewers.ColumnViewerSorter;
 import name.abuchen.portfolio.ui.util.viewers.CopyPasteSupport;
 import name.abuchen.portfolio.ui.util.viewers.DateLabelProvider;
+import name.abuchen.portfolio.ui.util.viewers.IndentedOwnerDrawLabelProvider;
 import name.abuchen.portfolio.ui.util.viewers.OptionLabelProvider;
 import name.abuchen.portfolio.ui.util.viewers.ReportingPeriodColumnOptions;
 import name.abuchen.portfolio.ui.util.viewers.SharesLabelProvider;
@@ -122,8 +123,6 @@ import name.abuchen.portfolio.util.Interval;
 
 public class StatementOfAssetsViewer
 {
-    private static final String PREFERENCE_NONE = "@none"; //$NON-NLS-1$
-
     public static final class Model
     {
         private static final String TOP = Model.class.getSimpleName() + "@top"; //$NON-NLS-1$
@@ -220,32 +219,82 @@ public class StatementOfAssetsViewer
             int sortOrder = 1;
             List<Element> answer = new ArrayList<>();
 
+            int depthOffset = !hideTotalsAtTheTop ? 1 : 0;
+
             // totals elements
-            Element totalTop = new Element(groupByTaxonomy, 0);
-            Element totalBottom = new Element(groupByTaxonomy, Integer.MAX_VALUE);
+            Element totalTop = new Element(groupByTaxonomy, 0, 0);
+            Element totalBottom = new Element(groupByTaxonomy, Integer.MAX_VALUE, 0);
 
             answer.add(totalTop);
 
-            for (AssetCategory cat : groupByTaxonomy.asList())
+            if (taxonomy != null)
             {
-                var isUnassignedCategory = Objects.equals(Classification.UNASSIGNED_ID,
-                                cat.getClassification().getId());
-                var hideCategory = taxonomy == null && isUnassignedCategory;
+                // hierarchical: build parent-child element relationships
+                Map<Classification, Element> classification2element = new HashMap<>();
 
-                Element category = new Element(groupByTaxonomy, cat, sortOrder);
-                if (!hideCategory)
-                    answer.add(category);
-                totalTop.addChild(category);
-                totalBottom.addChild(category);
-                sortOrder++;
-
-                for (AssetPosition p : cat.getPositions())
+                for (AssetCategory cat : groupByTaxonomy.asList())
                 {
-                    Element child = new Element(groupByTaxonomy, p, sortOrder);
-                    answer.add(child);
-                    category.addChild(child);
+                    var isUnassignedCategory = Objects.equals(Classification.UNASSIGNED_ID,
+                                    cat.getClassification().getId());
+                    var hideCategory = isUnassignedCategory;
+
+                    int depth = cat.getClassification().getDepth() + depthOffset;
+                    Element category = new Element(groupByTaxonomy, cat, sortOrder, depth);
+                    classification2element.put(cat.getClassification(), category);
+
+                    if (!hideCategory)
+                        answer.add(category);
+
+                    // link to parent element or totals
+                    Classification parentClassification = cat.getClassification().getParent();
+                    Element parentElement = parentClassification != null
+                                    ? classification2element.get(parentClassification)
+                                    : null;
+
+                    if (parentElement != null)
+                    {
+                        parentElement.addChild(category);
+                    }
+                    else
+                    {
+                        totalTop.addChild(category);
+                        totalBottom.addChild(category);
+                    }
+
+                    sortOrder++;
+
+                    for (AssetPosition p : cat.getPositions())
+                    {
+                        Element child = new Element(groupByTaxonomy, p, sortOrder, depth + 1);
+                        answer.add(child);
+                        category.addChild(child);
+                    }
+                    sortOrder++;
                 }
-                sortOrder++;
+            }
+            else
+            {
+                // flat: no taxonomy
+                for (AssetCategory cat : groupByTaxonomy.asList())
+                {
+                    var isUnassignedCategory = Objects.equals(Classification.UNASSIGNED_ID,
+                                    cat.getClassification().getId());
+
+                    Element category = new Element(groupByTaxonomy, cat, sortOrder, depthOffset);
+                    if (!isUnassignedCategory)
+                        answer.add(category);
+                    totalTop.addChild(category);
+                    totalBottom.addChild(category);
+                    sortOrder++;
+
+                    for (AssetPosition p : cat.getPositions())
+                    {
+                        Element child = new Element(groupByTaxonomy, p, sortOrder, depthOffset + 1);
+                        answer.add(child);
+                        category.addChild(child);
+                    }
+                    sortOrder++;
+                }
             }
 
             answer.add(totalBottom);
@@ -314,7 +363,7 @@ public class StatementOfAssetsViewer
     private ShowHideColumnHelper support;
 
     private final Client client;
-    private Taxonomy taxonomy;
+    private TaxonomySelector taxonomySelector;
     private Model model;
 
     @Inject
@@ -344,27 +393,13 @@ public class StatementOfAssetsViewer
     }
 
     @PostConstruct
-    private void loadTaxonomy() // NOSONAR
+    private void initTaxonomySelector() // NOSONAR
     {
-        String taxonomyId = preference.getString(this.getClass().getSimpleName());
-
-        if (PREFERENCE_NONE.equals(taxonomyId))
-            return;
-
-        if (taxonomyId != null && !taxonomyId.isBlank())
-        {
-            for (Taxonomy t : client.getTaxonomies())
-            {
-                if (taxonomyId.equals(t.getId()))
-                {
-                    this.taxonomy = t;
-                    break;
-                }
-            }
-        }
-
-        if (this.taxonomy == null && !client.getTaxonomies().isEmpty())
-            this.taxonomy = client.getTaxonomies().get(0);
+        this.taxonomySelector = new TaxonomySelector(client, preference,
+                        StatementOfAssetsViewer.class.getSimpleName(), () -> {
+                            if (model != null)
+                                setInput(model.clientFilter, model.getDate(), model.getCurrencyConverter());
+                        });
     }
 
     private Control createColumns(Composite parent, boolean isConfigurable) // NOSONAR
@@ -406,16 +441,16 @@ public class StatementOfAssetsViewer
         support.addColumn(column);
 
         column = new NameColumn(client, "1"); //$NON-NLS-1$
-        column.setLabelProvider(new NameColumnLabelProvider(client) // NOSONAR
+        var nameDelegate = new NameColumnLabelProvider(client) // NOSONAR
         {
             @Override
             public String getText(Object e)
             {
                 Element el = (Element) e;
-                if (((Element) e).isGroupByTaxonomy())
+                if (el.isGroupByTaxonomy())
                     return Messages.ColumnSum;
                 if (el.isCategory())
-                    return super.getText(el) + " (" + el.getChildren().count() + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+                    return super.getText(el) + " (" + el.getAllPositions().count() + ")"; //$NON-NLS-1$ //$NON-NLS-2$
                 return super.getText(e);
             }
 
@@ -432,7 +467,9 @@ public class StatementOfAssetsViewer
                     return null;
                 return super.getImage(e);
             }
-        });
+        };
+        column.setLabelProvider(new IndentedOwnerDrawLabelProvider(nameDelegate,
+                        e -> ((Element) e).getDepth(), e -> ((Element) e).isCategory()));
         column.setEditingSupport(new StringEditingSupport(Named.class, "name") //$NON-NLS-1$
         {
             @Override
@@ -531,7 +568,13 @@ public class StatementOfAssetsViewer
                 if (element.isGroupByTaxonomy())
                     return Values.Percent.format(1d);
                 if (element.isCategory())
-                    return Values.Percent.format(element.getCategory().getShare());
+                {
+                    long totalAmount = element.getGroupByTaxonomy().getValuation().getAmount();
+                    if (totalAmount == 0)
+                        return Values.Percent.format(0d);
+                    return Values.Percent.format(
+                                    (double) element.getValuation().getAmount() / (double) totalAmount);
+                }
                 else
                     return Values.Percent.format(element.getPosition().getShare());
             }
@@ -1111,24 +1154,8 @@ public class StatementOfAssetsViewer
 
     public void menuAboutToShow(IMenuManager manager)
     {
-        manager.add(new LabelOnly(Messages.LabelTaxonomies));
+        taxonomySelector.contributeToMenu(manager);
 
-        var noneAction = new SimpleAction(Messages.LabelUseNoTaxonomy, a -> {
-            taxonomy = null;
-            setInput(model.clientFilter, model.getDate(), model.getCurrencyConverter());
-        });
-        noneAction.setChecked(taxonomy == null);
-        manager.add(noneAction);
-
-        for (final Taxonomy t : client.getTaxonomies())
-        {
-            manager.add(new MenuContribution(t.getName(), () -> {
-                taxonomy = t;
-                setInput(model.clientFilter, model.getDate(), model.getCurrencyConverter());
-            }, t.equals(taxonomy)));
-        }
-
-        manager.add(new Separator());
         manager.add(new LabelOnly(Messages.LabelColumns));
         support.menuAboutToShow(manager);
 
@@ -1160,7 +1187,7 @@ public class StatementOfAssetsViewer
         assets.getTable().setRedraw(false);
         try
         {
-            this.model = new Model(preference, client, filter, converter, date, taxonomy);
+            this.model = new Model(preference, client, filter, converter, date, taxonomySelector.getTaxonomy());
 
             support.invalidateCache();
             assets.setInput(model.getElements());
@@ -1191,12 +1218,7 @@ public class StatementOfAssetsViewer
 
     private void widgetDisposed()
     {
-        var preferenceKey = this.getClass().getSimpleName();
-
-        if (taxonomy != null)
-            preference.setValue(preferenceKey, taxonomy.getId());
-        else
-            preference.setValue(preferenceKey, PREFERENCE_NONE);
+        taxonomySelector.saveTaxonomy();
 
         if (contextMenu != null)
             contextMenu.dispose();
@@ -1211,6 +1233,7 @@ public class StatementOfAssetsViewer
          * {@link ElementComparator}.
          */
         private final int sortOrder;
+        private final int depth;
 
         private GroupByTaxonomy groupByTaxonomy;
         private AssetCategory category;
@@ -1221,24 +1244,27 @@ public class StatementOfAssetsViewer
         private Map<CacheKey, LazySecurityPerformanceRecord> performance = new HashMap<>();
         private Map<CacheKey, LazyValue<PerformanceIndex>> performanceForCategoryTotals = new HashMap<>();
 
-        private Element(GroupByTaxonomy groupByTaxonomy, AssetCategory category, int sortOrder)
+        private Element(GroupByTaxonomy groupByTaxonomy, AssetCategory category, int sortOrder, int depth)
         {
             this.groupByTaxonomy = groupByTaxonomy;
             this.category = category;
             this.sortOrder = sortOrder;
+            this.depth = depth;
         }
 
-        private Element(GroupByTaxonomy groupByTaxonomy, AssetPosition position, int sortOrder)
+        private Element(GroupByTaxonomy groupByTaxonomy, AssetPosition position, int sortOrder, int depth)
         {
             this.groupByTaxonomy = groupByTaxonomy;
             this.position = position;
             this.sortOrder = sortOrder;
+            this.depth = depth;
         }
 
-        private Element(GroupByTaxonomy groupByTaxonomy, int sortOrder)
+        private Element(GroupByTaxonomy groupByTaxonomy, int sortOrder, int depth)
         {
             this.groupByTaxonomy = groupByTaxonomy;
             this.sortOrder = sortOrder;
+            this.depth = depth;
         }
 
         /**
@@ -1273,6 +1299,18 @@ public class StatementOfAssetsViewer
         public int getSortOrder()
         {
             return sortOrder;
+        }
+
+        public int getDepth()
+        {
+            return depth;
+        }
+
+        public Stream<Element> getAllPositions()
+        {
+            if (isPosition())
+                return Stream.of(this);
+            return children.stream().flatMap(Element::getAllPositions);
         }
 
         public void setPerformance(String currencyCode, Interval period, LazySecurityPerformanceRecord record)
@@ -1351,7 +1389,12 @@ public class StatementOfAssetsViewer
             if (position != null)
                 return position.getValuation();
             else if (category != null)
+            {
+                if (category.getPositions().isEmpty() && !children.isEmpty())
+                    return children.stream().map(Element::getValuation)
+                                    .collect(MoneyCollectors.sum(groupByTaxonomy.getValuation().getCurrencyCode()));
                 return category.getValuation();
+            }
             else
                 return groupByTaxonomy.getValuation();
         }
@@ -1489,7 +1532,7 @@ public class StatementOfAssetsViewer
             else if (element.isCategory())
             {
                 if (collector != null)
-                    return collectValue(element.getChildren(), currencyCode, interval);
+                    return collectValue(element.getAllPositions(), currencyCode, interval);
                 else if (valueProviderTotal != null && !Objects.equals(Classification.UNASSIGNED_ID,
                                 element.getCategory().getClassification().getId()))
                     return valueProviderTotal.apply(element.getPerformanceForCategoryTotals(currencyCode, interval));
@@ -1499,7 +1542,7 @@ public class StatementOfAssetsViewer
             else if (element.isGroupByTaxonomy())
             {
                 if (collector != null)
-                    return collectValue(element.getChildren().flatMap(Element::getChildren), currencyCode, interval);
+                    return collectValue(element.getAllPositions(), currencyCode, interval);
                 else if (valueProviderTotal != null)
                     return valueProviderTotal.apply(element.getPerformanceForCategoryTotals(currencyCode, interval));
 

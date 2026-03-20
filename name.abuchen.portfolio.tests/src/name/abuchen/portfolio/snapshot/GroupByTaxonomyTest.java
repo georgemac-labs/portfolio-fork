@@ -117,7 +117,7 @@ public class GroupByTaxonomyTest
     }
 
     @Test
-    public void testThatPartialAssignmentsInSubClassificationsAreMerged()
+    public void testThatPartialAssignmentsInSubClassificationsArePerNode()
     {
         Client client = new Client();
 
@@ -143,13 +143,20 @@ public class GroupByTaxonomyTest
 
         GroupByTaxonomy grouping = snapshot.groupByTaxonomy(taxonomy);
 
-        assertThat(grouping.asList().size(), is(1));
+        // debt is intermediate (empty), cat1 has 50%, cat2 has 50%
+        assertThat(grouping.asList().size(), is(3));
 
         AssetCategory debt = grouping.byClassification(taxonomy.getClassificationById("debt"));
+        assertThat(debt.getPositions().size(), is(0));
+        assertThat(debt.getValuation(), is(Money.of(CurrencyUnit.EUR, 0)));
 
-        assertThat(debt.getPositions().size(), is(1));
+        AssetCategory cat1 = grouping.byClassification(taxonomy.getClassificationById("cat1"));
+        assertThat(cat1.getPositions().size(), is(1));
+        assertThat(cat1.getValuation(), is(Money.of(CurrencyUnit.EUR, 50_00)));
 
-        assertThat(debt.getValuation(), is(Money.of(CurrencyUnit.EUR, 100_00)));
+        AssetCategory cat2 = grouping.byClassification(taxonomy.getClassificationById("cat2"));
+        assertThat(cat2.getPositions().size(), is(1));
+        assertThat(cat2.getValuation(), is(Money.of(CurrencyUnit.EUR, 50_00)));
     }
 
     @Test
@@ -224,6 +231,65 @@ public class GroupByTaxonomyTest
         assertThat(unassigned, notNullValue());
         assertThat(unassigned.getValuation(), is(Money.of(CurrencyUnit.EUR, 50_00)));
         assertThat(unassigned.getPositions().size(), is(1));
+    }
+
+    @Test
+    public void testHierarchicalTaxonomyDepthFirstOrder()
+    {
+        Client client = new Client();
+
+        Taxonomy taxonomy = new TaxonomyBuilder() //
+                        .addClassification("stocks") //
+                        .addClassification("stocks", "us") //
+                        .addClassification("stocks", "eu") //
+                        .addClassification("bonds") //
+                        .addTo(client);
+
+        Security aapl = new SecurityBuilder() //
+                        .addPrice("2010-01-01", Values.Quote.factorize(20)) //
+                        .assign(taxonomy, "us") //
+                        .addTo(client);
+
+        Security sap = new SecurityBuilder() //
+                        .addPrice("2010-01-01", Values.Quote.factorize(15)) //
+                        .assign(taxonomy, "eu") //
+                        .addTo(client);
+
+        Security bond = new SecurityBuilder() //
+                        .addPrice("2010-01-01", Values.Quote.factorize(10)) //
+                        .assign(taxonomy, "bonds") //
+                        .addTo(client);
+
+        Portfolio portfolio = new PortfolioBuilder() //
+                        .inbound_delivery(aapl, "2010-01-01", Values.Share.factorize(10), 20000) //
+                        .inbound_delivery(sap, "2010-01-01", Values.Share.factorize(10), 15000) //
+                        .inbound_delivery(bond, "2010-01-01", Values.Share.factorize(10), 10000) //
+                        .addTo(client);
+
+        LocalDate date = LocalDate.parse("2010-01-01");
+        PortfolioSnapshot snapshot = PortfolioSnapshot.create(portfolio, new TestCurrencyConverter(), date);
+        assertNotNull(snapshot);
+
+        GroupByTaxonomy grouping = snapshot.groupByTaxonomy(taxonomy);
+
+        // depth-first order: stocks (intermediate), us, eu, bonds
+        List<AssetCategory> categories = grouping.asList();
+        assertThat(categories.size(), is(4));
+
+        assertThat(categories.get(0).getClassification().getId(), is("stocks"));
+        assertThat(categories.get(0).getPositions().size(), is(0)); // intermediate
+
+        assertThat(categories.get(1).getClassification().getId(), is("us"));
+        assertThat(categories.get(1).getPositions().size(), is(1));
+        assertThat(categories.get(1).getValuation(), is(Money.of(CurrencyUnit.EUR, 200_00)));
+
+        assertThat(categories.get(2).getClassification().getId(), is("eu"));
+        assertThat(categories.get(2).getPositions().size(), is(1));
+        assertThat(categories.get(2).getValuation(), is(Money.of(CurrencyUnit.EUR, 150_00)));
+
+        assertThat(categories.get(3).getClassification().getId(), is("bonds"));
+        assertThat(categories.get(3).getPositions().size(), is(1));
+        assertThat(categories.get(3).getValuation(), is(Money.of(CurrencyUnit.EUR, 100_00)));
     }
 
     @Test
