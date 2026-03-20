@@ -2,6 +2,8 @@ package name.abuchen.portfolio.ui.views;
 
 import static name.abuchen.portfolio.util.CollectorsUtil.toMutableList;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.MessageFormat;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -9,6 +11,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,6 +60,7 @@ import org.eclipse.swt.widgets.Text;
 
 import name.abuchen.portfolio.model.Adaptable;
 import name.abuchen.portfolio.model.AttributeType;
+import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.CostMethod;
 import name.abuchen.portfolio.model.Security;
@@ -89,9 +93,11 @@ import name.abuchen.portfolio.ui.util.ReportingPeriodDropDown;
 import name.abuchen.portfolio.ui.util.ReportingPeriodDropDown.ReportingPeriodListener;
 import name.abuchen.portfolio.ui.util.SimpleAction;
 import name.abuchen.portfolio.ui.util.TableViewerCSVExporter;
+import name.abuchen.portfolio.ui.util.TaxonomySelector;
 import name.abuchen.portfolio.ui.util.viewers.ClientFilterColumnOptions;
 import name.abuchen.portfolio.ui.util.viewers.Column;
 import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport;
+import name.abuchen.portfolio.ui.util.viewers.IndentedOwnerDrawLabelProvider;
 import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.MarkDirtyClientListener;
 import name.abuchen.portfolio.ui.util.viewers.ColumnEditingSupport.TouchClientListener;
 import name.abuchen.portfolio.ui.util.viewers.ColumnViewerSorter;
@@ -135,11 +141,19 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
     {
         private final List<LazySecurityPerformanceRecord> records;
         private final Map<Security, LazySecurityPerformanceRecord> security2record;
+        private final Map<Security, Integer> security2weight;
 
         public AggregateRow(List<LazySecurityPerformanceRecord> records)
         {
+            this(records, records.stream().collect(Collectors.toMap(LazySecurityPerformanceRecord::getSecurity,
+                            r -> Classification.ONE_HUNDRED_PERCENT)));
+        }
+
+        public AggregateRow(List<LazySecurityPerformanceRecord> records, Map<Security, Integer> security2weight)
+        {
             this.records = records;
             this.security2record = records.stream().collect(Collectors.toMap(r -> r.getSecurity(), r -> r));
+            this.security2weight = security2weight;
         }
 
         public List<LazySecurityPerformanceRecord> getRecords()
@@ -160,7 +174,10 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             {
                 var v = value.apply(r);
                 if (v != null)
-                    sum.add(v);
+                {
+                    int weight = security2weight.getOrDefault(r.getSecurity(), Classification.ONE_HUNDRED_PERCENT);
+                    sum.add(weight == Classification.ONE_HUNDRED_PERCENT ? v : weight(v, weight));
+                }
             }
 
             return sum.toMoney();
@@ -177,6 +194,18 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             }
 
             return sum;
+        }
+
+        private Money weight(Money value, int weight)
+        {
+            if (weight == Classification.ONE_HUNDRED_PERCENT)
+                return value;
+
+            long amount = BigDecimal.valueOf(value.getAmount()).multiply(BigDecimal.valueOf(weight), Values.MC)
+                            .divide(BigDecimal.valueOf(Classification.ONE_HUNDRED_PERCENT), Values.MC)
+                            .setScale(0, RoundingMode.HALF_EVEN).longValue();
+
+            return Money.of(value.getCurrencyCode(), amount);
         }
     }
 
@@ -320,17 +349,134 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
 
         public List<RowElement> getRows()
         {
+            var taxonomy = taxonomySelector != null ? taxonomySelector.getTaxonomy() : null;
+
+            if (taxonomy == null)
+                return getFlatRows();
+
+            return getTaxonomyRows(taxonomy);
+        }
+
+        private List<RowElement> getFlatRows()
+        {
             var rows = new ArrayList<RowElement>();
 
             if (!model.hideTotalsAtTheTop)
                 rows.add(new RowElement(model, -1));
 
-            model.getRecords().stream().map(r -> new RowElement(model, r)).forEach(rows::add);
+            model.getRecords().stream()
+                            .map(r -> new RowElement(model, r, 0, 0))
+                            .forEach(rows::add);
 
             if (!model.hideTotalsAtTheBottom)
                 rows.add(new RowElement(model, 1));
 
             return rows;
+        }
+
+        private List<RowElement> getTaxonomyRows(Taxonomy taxonomy)
+        {
+            var rows = new ArrayList<RowElement>();
+            int counter = 0;
+            int depthOffset = (!hideTotalsAtTheTop || !hideTotalsAtTheBottom) ? 1 : 0;
+
+            if (!hideTotalsAtTheTop)
+            {
+                rows.add(new RowElement(model, counter, 0));
+                counter++;
+            }
+
+            // build lookup: security -> record
+            Map<Security, LazySecurityPerformanceRecord> security2record = new HashMap<>();
+            for (var r : model.getRecords())
+                security2record.put(r.getSecurity(), r);
+
+            Map<Security, Integer> assignedWeights = new HashMap<>();
+
+            // walk taxonomy tree in depth-first order
+            for (Classification classification : taxonomy.getRoot().getTreeElements())
+            {
+                // collect directly assigned securities that have a record
+                Map<Security, Integer> directWeights = new LinkedHashMap<>();
+                for (var assignment : classification.getAssignments())
+                {
+                    var vehicle = assignment.getInvestmentVehicle();
+                    if (vehicle instanceof Security security)
+                    {
+                        var record = security2record.get(security);
+                        if (record != null)
+                        {
+                            directWeights.merge(security, assignment.getWeight(), Integer::sum);
+                            assignedWeights.merge(security, assignment.getWeight(), Integer::sum);
+                        }
+                    }
+                }
+
+                // collect all descendant records recursively
+                Map<Security, Integer> descendantWeights = new LinkedHashMap<>(directWeights);
+                collectDescendantRecordWeights(classification, security2record, descendantWeights);
+
+                if (descendantWeights.isEmpty())
+                    continue;
+
+                int categoryDepth = classification.getDepth() + depthOffset;
+                List<LazySecurityPerformanceRecord> descendantRecords = descendantWeights.keySet().stream()
+                                .map(security2record::get).collect(Collectors.toList());
+
+                // emit category row
+                rows.add(new RowElement(model, classification, counter, categoryDepth,
+                                new AggregateRow(descendantRecords, descendantWeights)));
+                counter++;
+
+                // emit child record rows
+                for (var security : directWeights.keySet())
+                {
+                    var record = security2record.get(security);
+                    rows.add(new RowElement(model, record, counter, categoryDepth + 1));
+                }
+                counter++;
+            }
+
+            // handle unassigned securities
+            List<LazySecurityPerformanceRecord> unassigned = new ArrayList<>();
+            for (var r : model.getRecords())
+            {
+                int assignedWeight = assignedWeights.getOrDefault(r.getSecurity(), 0);
+                if (assignedWeight < Classification.ONE_HUNDRED_PERCENT)
+                    unassigned.add(r);
+            }
+
+            if (!unassigned.isEmpty())
+            {
+                for (var record : unassigned)
+                    rows.add(new RowElement(model, record, counter, depthOffset));
+                counter++;
+            }
+
+            if (!hideTotalsAtTheBottom)
+                rows.add(new RowElement(model, Integer.MAX_VALUE, 0));
+
+            return rows;
+        }
+
+        private void collectDescendantRecordWeights(Classification parent,
+                        Map<Security, LazySecurityPerformanceRecord> security2record,
+                        Map<Security, Integer> result)
+        {
+            for (Classification child : parent.getChildren())
+            {
+                for (var assignment : child.getAssignments())
+                {
+                    var vehicle = assignment.getInvestmentVehicle();
+                    if (vehicle instanceof Security security)
+                    {
+                        var record = security2record.get(security);
+                        if (record != null)
+                            result.merge(security, assignment.getWeight(), Integer::sum);
+                    }
+                }
+                collectDescendantRecordWeights(child, security2record, result);
+            }
         }
     }
 
@@ -345,22 +491,47 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
          * aggregate rows (either on top or on the bottom or both).
          */
         private final int sortOrder;
+        private final int depth;
 
         private final Model model;
         private final LazySecurityPerformanceRecord performanceRecord;
+        private final Classification classification;
+        private final AggregateRow branchAggregate;
 
-        public RowElement(Model model, LazySecurityPerformanceRecord performanceRecord)
+        public RowElement(Model model, LazySecurityPerformanceRecord performanceRecord, int sortOrder, int depth)
         {
-            this.sortOrder = 0;
+            this.sortOrder = sortOrder;
+            this.depth = depth;
             this.performanceRecord = performanceRecord;
             this.model = model;
+            this.classification = null;
+            this.branchAggregate = null;
         }
 
         public RowElement(Model model, int sortOrder)
         {
+            this(model, sortOrder, 0);
+        }
+
+        public RowElement(Model model, int sortOrder, int depth)
+        {
             this.sortOrder = sortOrder;
+            this.depth = depth;
             this.performanceRecord = null;
             this.model = model;
+            this.classification = null;
+            this.branchAggregate = null;
+        }
+
+        public RowElement(Model model, Classification classification, int sortOrder, int depth,
+                        AggregateRow branchAggregate)
+        {
+            this.sortOrder = sortOrder;
+            this.depth = depth;
+            this.performanceRecord = null;
+            this.model = model;
+            this.classification = classification;
+            this.branchAggregate = branchAggregate;
         }
 
         public int getSortOrder()
@@ -368,9 +539,29 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             return sortOrder;
         }
 
+        public int getDepth()
+        {
+            return depth;
+        }
+
         public boolean isRecord()
         {
             return performanceRecord != null;
+        }
+
+        public boolean isCategory()
+        {
+            return classification != null;
+        }
+
+        public Classification getClassification()
+        {
+            return classification;
+        }
+
+        public AggregateRow getBranchAggregate()
+        {
+            return branchAggregate;
         }
 
         @Override
@@ -504,6 +695,10 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
             var row = (RowElement) element;
             if (row.performanceRecord != null)
                 return recordLabelProvider.getText(row.performanceRecord);
+            else if (row.isCategory())
+                return aggregateLabelProvider != null
+                                ? aggregateLabelProvider.apply(row.getBranchAggregate())
+                                : null;
             else if (aggregateLabelProvider != null)
                 return aggregateLabelProvider.apply(row.model.getFilteredAggregate());
             else
@@ -557,6 +752,9 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         public String getText(Object element, ClientFilterMenu.Item filterItem)
         {
             var row = (RowElement) element;
+
+            if (row.isCategory())
+                return null;
 
             if (row.isRecord())
             {
@@ -650,6 +848,8 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         }
     }
 
+    private static final String PREF_TAXONOMY = SecuritiesPerformanceView.class.getSimpleName() + "-taxonomy";
+
     @Inject
     private SelectionService selectionService;
 
@@ -665,6 +865,7 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
     private ReportingPeriodDropDown dropDown;
     private Font boldFont;
 
+    private TaxonomySelector taxonomySelector;
     private ClientFilterDropDown clientFilter;
     private final Predicate<LazySecurityPerformanceRecord> searchPredicate = this::matchesSearchPattern;
     private List<Predicate<LazySecurityPerformanceRecord>> recordFilter = new ArrayList<>();
@@ -696,6 +897,8 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         addExportButton(toolBar);
 
         toolBar.add(new DropDown(Messages.MenuShowHideColumns, Images.CONFIG, SWT.NONE, manager -> {
+            taxonomySelector.contributeToMenu(manager);
+
             recordColumns.menuAboutToShow(manager);
 
             manager.add(new Separator());
@@ -910,6 +1113,9 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
         LocalResourceManager resources = new LocalResourceManager(JFaceResources.getResources(), records.getTable());
         boldFont = resources.create(FontDescriptor.createFrom(records.getTable().getFont()).setStyle(SWT.BOLD));
 
+        taxonomySelector = new TaxonomySelector(getClient(), getPreferenceStore(), PREF_TAXONOMY,
+                        () -> { records.setInput(model.getRows()); records.refresh(); });
+
         reportingPeriodUpdated();
 
         return container;
@@ -933,7 +1139,19 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
 
         // security name
         column = new NameColumn(getClient());
-        column.setLabelProvider(new RowElementLabelProvider(column, aggregate -> Messages.ColumnSum));
+        var nameLabelProvider = new RowElementLabelProvider(column, aggregate -> Messages.ColumnSum)
+        {
+            @Override
+            public String getText(Object element)
+            {
+                var row = (RowElement) element;
+                if (row.isCategory())
+                    return row.getClassification().getName();
+                return super.getText(element);
+            }
+        };
+        column.setLabelProvider(new IndentedOwnerDrawLabelProvider(nameLabelProvider,
+                        e -> ((RowElement) e).getDepth(), e -> ((RowElement) e).isCategory()));
         column.getEditingSupport().addListener(new TouchClientListener(getClient()));
         column.setSortDirction(SWT.UP);
         recordColumns.addColumn(column);
